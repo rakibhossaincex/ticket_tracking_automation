@@ -409,7 +409,7 @@ function initCharts() {
     // Register the datalabels plugin
     Chart.register(ChartDataLabels);
 
-    // Daily Chart - shows values on top of bars
+    // Daily Chart - shows values on top of bars (inside if >90% of max)
     dailyChart = new Chart(document.getElementById('dailyChart'), {
         type: 'bar',
         data: { labels: [], datasets: [] },
@@ -420,8 +420,18 @@ function initCharts() {
                 legend: { labels: { color: '#a0a0b0' } },
                 datalabels: {
                     color: '#ffffff',
-                    anchor: 'end',
-                    align: 'top',
+                    anchor: (context) => {
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        return value / max > 0.9 ? 'end' : 'end';
+                    },
+                    align: (context) => {
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        // If bar is > 90% of max, show inside (bottom align)
+                        return value / max > 0.9 ? 'bottom' : 'top';
+                    },
+                    offset: 4,
                     font: { weight: 'bold', size: 11 },
                     formatter: (value) => value > 0 ? value : ''
                 }
@@ -496,30 +506,20 @@ function initCharts() {
             plugins: {
                 legend: { display: false },
                 datalabels: {
-                    color: (context) => {
-                        // Get max value for comparison
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        // Show white inside if bar is > 80% of max, else show outside
-                        return value / max > 0.8 ? '#ffffff' : '#ffffff';
-                    },
+                    color: '#ffffff',
                     anchor: (context) => {
                         const max = Math.max(...context.dataset.data);
                         const value = context.dataset.data[context.dataIndex];
-                        // If bar is > 80% of max, anchor at start (inside)
-                        return value / max > 0.8 ? 'start' : 'end';
+                        // If bar is > 80% of max, anchor at end but inside
+                        return value / max > 0.8 ? 'end' : 'end';
                     },
                     align: (context) => {
                         const max = Math.max(...context.dataset.data);
                         const value = context.dataset.data[context.dataIndex];
-                        // If bar is > 80% of max, align right (inside bar)
-                        return value / max > 0.8 ? 'right' : 'right';
+                        // If bar is > 80% of max, align left (inside bar at end)
+                        return value / max > 0.8 ? 'left' : 'right';
                     },
-                    offset: (context) => {
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        return value / max > 0.8 ? 8 : 4;
-                    },
+                    offset: 4,
                     font: { weight: 'bold', size: 11 },
                     formatter: (value) => value > 0 ? value : ''
                 }
@@ -549,8 +549,18 @@ function initCharts() {
                 legend: { labels: { color: '#a0a0b0' } },
                 datalabels: {
                     color: '#ffffff',
-                    anchor: 'end',
-                    align: 'top',
+                    anchor: (context) => {
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        return value / max > 0.9 ? 'end' : 'end';
+                    },
+                    align: (context) => {
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        // If bar is > 90% of max, show inside (bottom align)
+                        return value / max > 0.9 ? 'bottom' : 'top';
+                    },
+                    offset: 4,
                     font: { weight: 'bold', size: 10 },
                     formatter: (value, ctx) => {
                         if (ctx.datasetIndex === 0) return value + '%';
