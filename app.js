@@ -931,7 +931,7 @@ function showAllHandlersModal() {
                         color: '#ffffff',
                         anchor: 'end',
                         align: 'right',
-                        font: { weight: 'bold', size: 11 },
+                        font: { weight: 'bold', size: 12 },
                         formatter: (value) => value > 0 ? value : ''
                     }
                 },
@@ -942,7 +942,11 @@ function showAllHandlersModal() {
                         beginAtZero: true
                     },
                     y: {
-                        ticks: { color: '#a0a0b0', font: { size: 10 } },
+                        ticks: {
+                            color: '#a0a0b0',
+                            font: { size: 12 },
+                            autoSkip: false
+                        },
                         grid: { color: 'rgba(255,255,255,0.05)' }
                     }
                 }
@@ -961,7 +965,9 @@ function showAllHandlersModal() {
         data: allHandlers.map(h => h[1]),
         backgroundColor: 'rgba(139, 92, 246, 0.7)',
         borderColor: 'rgba(139, 92, 246, 1)',
-        borderWidth: 1
+        borderWidth: 1,
+        barThickness: 25,
+        maxBarThickness: 30
     }];
     allHandlersChart.update();
 
