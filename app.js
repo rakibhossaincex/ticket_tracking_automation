@@ -954,20 +954,22 @@ function showAllHandlersModal() {
         });
     }
 
-    // Set canvas height based on all handlers (larger bars for readability)
+    // Set canvas height based on all handlers (40px per handler for proper spacing)
     const allHandlers = window.allHandlersData || [];
     const canvas = document.getElementById('allHandlersChart');
-    canvas.style.height = Math.max(600, allHandlers.length * 50) + 'px';
+    const heightPerHandler = 40;
+    canvas.style.height = Math.max(600, allHandlers.length * heightPerHandler) + 'px';
 
-    // Update chart data
+    // Update chart data with proper bar sizing
     allHandlersChart.data.labels = allHandlers.map(h => h[0]);
     allHandlersChart.data.datasets = [{
         data: allHandlers.map(h => h[1]),
         backgroundColor: 'rgba(139, 92, 246, 0.7)',
         borderColor: 'rgba(139, 92, 246, 1)',
         borderWidth: 1,
-        barThickness: 25,
-        maxBarThickness: 30
+        barThickness: 20,
+        categoryPercentage: 0.6,
+        barPercentage: 0.8
     }];
     allHandlersChart.update();
 
