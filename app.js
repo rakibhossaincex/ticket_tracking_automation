@@ -623,8 +623,8 @@ function updateCharts() {
     // Dynamically set canvas height based on number of handlers
     const handlerCanvas = document.getElementById('handlerChart');
     const handlerContainer = document.getElementById('handlerChartContainer');
-    const barHeight = 30; // height per handler in pixels
-    handlerCanvas.style.height = Math.max(280, allHandlers.length * barHeight) + 'px';
+    const barHeight = 40; // height per handler in pixels (increased for readability)
+    handlerCanvas.style.height = Math.max(400, allHandlers.length * barHeight) + 'px';
 
     handlerChart.data.labels = allHandlers.map(h => h[0]);
     handlerChart.data.datasets = [{
@@ -653,7 +653,25 @@ function updateCharts() {
         }
     });
 
+    // Function to abbreviate team names
+    function getShortTeamName(fullName) {
+        const abbreviations = {
+            'Pro Solutions Task Force': 'PSTF',
+            'Pro Solution Task Force': 'PSTF',
+            'Ticket Dependencies': 'TD',
+            'CEx Reversal': 'CExR',
+            'Tech Team': 'TT',
+            'Platform Operations': 'PO',
+            'Payments and Treasury': 'P&T',
+            'Back Office': 'BO',
+            'BOps': 'BOps',
+            'Customer Experience': 'CEx'
+        };
+        return abbreviations[fullName] || fullName.split(' ').map(w => w[0]).join('');
+    }
+
     const teamNames = Object.keys(teamSlaData).sort();
+    const shortTeamNames = teamNames.map(getShortTeamName);
     const slaMetPct = teamNames.map(t => {
         const d = teamSlaData[t];
         const slaTotalCount = d.met + d.missed;
@@ -666,7 +684,7 @@ function updateCharts() {
         return Math.round(avg);
     });
 
-    teamSlaChart.data.labels = teamNames;
+    teamSlaChart.data.labels = shortTeamNames;
     teamSlaChart.data.datasets = [
         {
             label: 'SLA Met %',

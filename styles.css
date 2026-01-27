@@ -264,13 +264,15 @@ body {
 
 /* Scrollable Chart Container */
 .scrollable-chart .chart-scroll-container {
-    max-height: 350px;
+    max-height: 400px;
     overflow-y: auto;
+    min-height: 300px;
 }
 
 .scrollable-chart canvas {
     max-height: none !important;
     height: auto !important;
+    min-height: 500px;
 }
 
 /* Wide Chart - spans full width */
@@ -285,6 +287,7 @@ body {
 /* Searchable Dropdown Styles */
 .filter-group.searchable {
     position: relative;
+    z-index: 100;
 }
 
 .searchable-dropdown {
@@ -319,7 +322,8 @@ body {
     border: 1px solid var(--border-color);
     border-top: none;
     border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-    z-index: 100;
+    z-index: 1000;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
 }
 
 .dropdown-options.active {
