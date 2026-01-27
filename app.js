@@ -22,7 +22,7 @@ let sortColumn = 'date';
 let sortDirection = 'desc';
 
 // Charts
-let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart;
+let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart;
 
 // DOM Elements
 const elements = {
@@ -100,6 +100,9 @@ async function init() {
 
     // Initialize charts
     initCharts();
+
+    // See All Handlers button
+    document.getElementById('seeAllHandlers').addEventListener('click', showAllHandlersModal);
 
     // Load data
     await loadData();
@@ -606,7 +609,7 @@ function updateCharts() {
     }];
     slaChart.update();
 
-    // All handlers (not just top 10) - sorted by ticket count
+    // All handlers sorted by ticket count
     const handlerData = {};
     filteredData.forEach(t => {
         const handler = t.ticket_handler_agent_name;
@@ -615,20 +618,18 @@ function updateCharts() {
         }
     });
 
-    const allHandlers = Object.entries(handlerData)
+    // Store all handlers globally for modal
+    window.allHandlersData = Object.entries(handlerData)
         .sort((a, b) => b[1] - a[1]);
 
-    console.log('📊 All Handlers:', allHandlers.length);
+    // Show only top 10 in main chart
+    const topHandlers = window.allHandlersData.slice(0, 10);
 
-    // Dynamically set canvas height based on number of handlers
-    const handlerCanvas = document.getElementById('handlerChart');
-    const handlerContainer = document.getElementById('handlerChartContainer');
-    const barHeight = 40; // height per handler in pixels (increased for readability)
-    handlerCanvas.style.height = Math.max(400, allHandlers.length * barHeight) + 'px';
+    console.log('📊 Top 10 Handlers (of ' + window.allHandlersData.length + ')');
 
-    handlerChart.data.labels = allHandlers.map(h => h[0]);
+    handlerChart.data.labels = topHandlers.map(h => h[0]);
     handlerChart.data.datasets = [{
-        data: allHandlers.map(h => h[1]),
+        data: topHandlers.map(h => h[1]),
         backgroundColor: 'rgba(139, 92, 246, 0.7)',
         borderColor: 'rgba(139, 92, 246, 1)',
         borderWidth: 1
@@ -658,14 +659,16 @@ function updateCharts() {
         const abbreviations = {
             'Pro Solutions Task Force': 'PSTF',
             'Pro Solution Task Force': 'PSTF',
-            'Ticket Dependencies': 'TD',
-            'CEx Reversal': 'CExR',
+            'Ticket Dependencies': 'T Dependencies',
+            'CEx Reversal': 'CEx Reversal',
             'Tech Team': 'TT',
             'Platform Operations': 'PO',
             'Payments and Treasury': 'P&T',
             'Back Office': 'BO',
             'BOps': 'BOps',
-            'Customer Experience': 'CEx'
+            'Customer Experience': 'CEx',
+            'GB Email Communication': 'GB Email Com',
+            'GB Email Com': 'GB Email Com'
         };
         return abbreviations[fullName] || fullName.split(' ').map(w => w[0]).join('');
     }
@@ -903,6 +906,83 @@ function handleEscapeKey(e) {
 
 function handleOutsideClick(e) {
     if (e.target.classList.contains('modal')) closeModal();
+}
+
+// ============================================
+// ALL HANDLERS MODAL
+// ============================================
+
+function showAllHandlersModal() {
+    const modal = document.getElementById('handlersModal');
+    modal.classList.add('active');
+
+    // Initialize the all handlers chart if not done
+    if (!allHandlersChart) {
+        allHandlersChart = new Chart(document.getElementById('allHandlersChart'), {
+            type: 'bar',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        color: '#ffffff',
+                        anchor: 'end',
+                        align: 'right',
+                        font: { weight: 'bold', size: 11 },
+                        formatter: (value) => value > 0 ? value : ''
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#a0a0b0' },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        beginAtZero: true
+                    },
+                    y: {
+                        ticks: { color: '#a0a0b0', font: { size: 10 } },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    }
+                }
+            }
+        });
+    }
+
+    // Set canvas height based on all handlers
+    const allHandlers = window.allHandlersData || [];
+    const canvas = document.getElementById('allHandlersChart');
+    canvas.style.height = Math.max(400, allHandlers.length * 35) + 'px';
+
+    // Update chart data
+    allHandlersChart.data.labels = allHandlers.map(h => h[0]);
+    allHandlersChart.data.datasets = [{
+        data: allHandlers.map(h => h[1]),
+        backgroundColor: 'rgba(139, 92, 246, 0.7)',
+        borderColor: 'rgba(139, 92, 246, 1)',
+        borderWidth: 1
+    }];
+    allHandlersChart.update();
+
+    // Add event listeners
+    document.addEventListener('keydown', handleHandlersEscapeKey);
+    modal.addEventListener('click', handleHandlersOutsideClick);
+}
+
+function closeHandlersModal() {
+    const modal = document.getElementById('handlersModal');
+    modal.classList.remove('active');
+    document.removeEventListener('keydown', handleHandlersEscapeKey);
+    modal.removeEventListener('click', handleHandlersOutsideClick);
+}
+
+function handleHandlersEscapeKey(e) {
+    if (e.key === 'Escape') closeHandlersModal();
+}
+
+function handleHandlersOutsideClick(e) {
+    if (e.target.classList.contains('modal')) closeHandlersModal();
 }
 
 // ============================================

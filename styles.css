@@ -127,6 +127,8 @@ body {
     border-radius: var(--radius);
     padding: 20px;
     margin-bottom: 24px;
+    position: relative;
+    z-index: 50;
 }
 
 .filter-row {
@@ -249,6 +251,9 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
     padding: 24px;
+    min-height: 350px;
+    display: flex;
+    flex-direction: column;
 }
 
 .chart-card h3 {
@@ -260,19 +265,33 @@ body {
 
 .chart-card canvas {
     max-height: 280px;
+    flex-grow: 1;
 }
 
-/* Scrollable Chart Container */
-.scrollable-chart .chart-scroll-container {
-    max-height: 400px;
-    overflow-y: auto;
-    min-height: 300px;
+/* Chart Header with button */
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
 }
 
-.scrollable-chart canvas {
-    max-height: none !important;
-    height: auto !important;
-    min-height: 500px;
+.chart-header h3 {
+    margin-bottom: 0;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--accent-primary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    padding: 0;
+}
+
+.btn-link:hover {
+    color: var(--accent-secondary);
 }
 
 /* Wide Chart - spans full width */
@@ -282,6 +301,16 @@ body {
 
 .chart-wide canvas {
     max-height: 350px;
+}
+
+/* Handler Modal Specific */
+.handler-modal-chart {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.handler-modal-chart canvas {
+    min-height: 800px;
 }
 
 /* Searchable Dropdown Styles */
