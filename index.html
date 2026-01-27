@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket Analytics Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎫 Ticket Analytics Dashboard</h1>
+            <div class="header-actions">
+                <button id="refreshBtn" class="btn btn-primary">↻ Refresh Data</button>
+                <span id="lastUpdated" class="last-updated"></span>
+            </div>
+        </header>
+
+        <!-- Filter Bar -->
+        <section class="filter-bar">
+            <div class="filter-row">
+                <!-- Date Range -->
+                <div class="filter-group">
+                    <label>Date Range</label>
+                    <input type="text" id="dateRange" class="filter-input" placeholder="Select dates...">
+                </div>
+
+                <!-- Quick Date Buttons -->
+                <div class="filter-group quick-dates">
+                    <label>Quick Select</label>
+                    <div class="btn-group">
+                        <button class="btn btn-sm" data-range="today">Today</button>
+                        <button class="btn btn-sm" data-range="7days">7 Days</button>
+                        <button class="btn btn-sm" data-range="30days">30 Days</button>
+                        <button class="btn btn-sm" data-range="month">This Month</button>
+                    </div>
+                </div>
+
+                <!-- Agent Filter -->
+                <div class="filter-group">
+                    <label>Handler</label>
+                    <select id="agentFilter" class="filter-select">
+                        <option value="">All Agents</option>
+                    </select>
+                </div>
+
+                <!-- Team Filter -->
+                <div class="filter-group">
+                    <label>Team</label>
+                    <select id="teamFilter" class="filter-select">
+                        <option value="">All Teams</option>
+                    </select>
+                </div>
+
+                <!-- SLA Filter -->
+                <div class="filter-group">
+                    <label>SLA Status</label>
+                    <select id="slaFilter" class="filter-select">
+                        <option value="">All</option>
+                        <option value="Met">Met</option>
+                        <option value="Missed">Missed</option>
+                    </select>
+                </div>
+
+                <!-- Search -->
+                <div class="filter-group search-group">
+                    <label>Search</label>
+                    <input type="text" id="searchInput" class="filter-input" placeholder="Ticket ID or keyword...">
+                </div>
+
+                <!-- Reset -->
+                <div class="filter-group">
+                    <label>&nbsp;</label>
+                    <button id="resetFilters" class="btn btn-secondary">Reset Filters</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Metric Cards -->
+        <section class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-icon">🎫</div>
+                <div class="metric-content">
+                    <span class="metric-value" id="totalTickets">-</span>
+                    <span class="metric-label">Total Tickets</span>
+                </div>
+            </div>
+            <div class="metric-card success">
+                <div class="metric-icon">✓</div>
+                <div class="metric-content">
+                    <span class="metric-value" id="slaMet">-</span>
+                    <span class="metric-label">SLA Met</span>
+                </div>
+            </div>
+            <div class="metric-card danger">
+                <div class="metric-icon">✗</div>
+                <div class="metric-content">
+                    <span class="metric-value" id="slaMissed">-</span>
+                    <span class="metric-label">SLA Missed</span>
+                </div>
+            </div>
+            <div class="metric-card info">
+                <div class="metric-icon">⏱</div>
+                <div class="metric-content">
+                    <span class="metric-value" id="avgResolution">-</span>
+                    <span class="metric-label">Avg Resolution</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Grid -->
+        <section class="charts-grid">
+            <div class="chart-card">
+                <h3>Daily Ticket Volume</h3>
+                <canvas id="dailyChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Team Distribution</h3>
+                <canvas id="teamChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>SLA Performance</h3>
+                <canvas id="slaChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Top Handlers</h3>
+                <canvas id="handlerChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Data Table -->
+        <section class="table-section">
+            <div class="table-header">
+                <h3>Ticket Details</h3>
+                <div class="table-actions">
+                    <select id="pageSize" class="filter-select">
+                        <option value="25">25 per page</option>
+                        <option value="50">50 per page</option>
+                        <option value="100">100 per page</option>
+                    </select>
+                    <button id="exportCsv" class="btn btn-secondary">📥 Export CSV</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="ticketTable">
+                    <thead>
+                        <tr>
+                            <th data-sort="date">Date ↕</th>
+                            <th data-sort="ticket_id">Ticket ID ↕</th>
+                            <th data-sort="ticket_handler_agent_name">Handler ↕</th>
+                            <th data-sort="current_team">Team ↕</th>
+                            <th data-sort="resolution_time">Resolution Time ↕</th>
+                            <th data-sort="sla">SLA ↕</th>
+                            <th data-sort="issue_category">Category ↕</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="8" class="loading">Loading data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                <button id="prevPage" class="btn btn-sm" disabled>← Previous</button>
+                <span id="pageInfo">Page 1</span>
+                <button id="nextPage" class="btn btn-sm">Next →</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Ticket Detail Modal -->
+    <div id="ticketModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Ticket Details</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body">
+                <!-- Ticket details will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
