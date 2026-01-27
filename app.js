@@ -950,10 +950,10 @@ function showAllHandlersModal() {
         });
     }
 
-    // Set canvas height based on all handlers
+    // Set canvas height based on all handlers (larger bars for readability)
     const allHandlers = window.allHandlersData || [];
     const canvas = document.getElementById('allHandlersChart');
-    canvas.style.height = Math.max(400, allHandlers.length * 35) + 'px';
+    canvas.style.height = Math.max(600, allHandlers.length * 50) + 'px';
 
     // Update chart data
     allHandlersChart.data.labels = allHandlers.map(h => h[0]);

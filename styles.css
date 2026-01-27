@@ -305,12 +305,13 @@ body {
 
 /* Handler Modal Specific */
 .handler-modal-chart {
-    max-height: 500px;
+    max-height: 70vh;
     overflow-y: auto;
+    padding: 20px;
 }
 
 .handler-modal-chart canvas {
-    min-height: 800px;
+    min-height: 1500px;
 }
 
 /* Searchable Dropdown Styles */
