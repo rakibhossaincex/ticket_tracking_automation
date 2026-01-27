@@ -262,6 +262,85 @@ body {
     max-height: 280px;
 }
 
+/* Scrollable Chart Container */
+.scrollable-chart .chart-scroll-container {
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.scrollable-chart canvas {
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* Wide Chart - spans full width */
+.chart-wide {
+    grid-column: 1 / -1;
+}
+
+.chart-wide canvas {
+    max-height: 350px;
+}
+
+/* Searchable Dropdown Styles */
+.filter-group.searchable {
+    position: relative;
+}
+
+.searchable-dropdown {
+    position: relative;
+}
+
+.searchable-dropdown input {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.searchable-dropdown input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.dropdown-options {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 250px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    z-index: 100;
+}
+
+.dropdown-options.active {
+    display: block;
+}
+
+.dropdown-option {
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.dropdown-option:hover {
+    background: rgba(99, 102, 241, 0.2);
+}
+
+.dropdown-option.selected {
+    background: var(--accent-primary);
+    color: white;
+}
+
 /* Table Section */
 .table-section {
     background: var(--bg-card);

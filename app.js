@@ -22,7 +22,7 @@ let sortColumn = 'date';
 let sortDirection = 'desc';
 
 // Charts
-let dailyChart, teamChart, slaChart, handlerChart;
+let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart;
 
 // DOM Elements
 const elements = {
@@ -62,9 +62,7 @@ async function init() {
         onChange: applyFilters
     });
 
-    // Event Listeners
-    elements.agentFilter.addEventListener('change', applyFilters);
-    elements.teamFilter.addEventListener('change', applyFilters);
+    // Event Listeners for searchable dropdowns are set up in initSearchableDropdowns
     elements.slaFilter.addEventListener('change', applyFilters);
     elements.searchInput.addEventListener('input', debounce(applyFilters, 300));
     elements.resetFilters.addEventListener('click', resetFilters);
@@ -174,15 +172,71 @@ async function loadData() {
 }
 
 function populateFilters() {
-    // Get unique agents
+    // Get unique agents and teams
     const agents = [...new Set(allData.map(t => t.ticket_handler_agent_name).filter(Boolean))].sort();
-    elements.agentFilter.innerHTML = '<option value="">All Agents</option>' +
-        agents.map(a => `<option value="${a}">${a}</option>`).join('');
-
-    // Get unique teams
     const teams = [...new Set(allData.map(t => t.current_team).filter(Boolean))].sort();
-    elements.teamFilter.innerHTML = '<option value="">All Teams</option>' +
-        teams.map(t => `<option value="${t}">${t}</option>`).join('');
+
+    // Initialize searchable dropdowns
+    initSearchableDropdown('agent', agents, 'All Agents');
+    initSearchableDropdown('team', teams, 'All Teams');
+}
+
+function initSearchableDropdown(type, options, placeholder) {
+    const searchInput = document.getElementById(`${type}Search`);
+    const optionsContainer = document.getElementById(`${type}Options`);
+    const hiddenInput = document.getElementById(`${type}Filter`);
+
+    // Render all options
+    function renderOptions(filter = '') {
+        const filtered = filter
+            ? options.filter(o => o.toLowerCase().includes(filter.toLowerCase()))
+            : options;
+
+        let html = `<div class="dropdown-option ${hiddenInput.value === '' ? 'selected' : ''}" data-value="">${placeholder}</div>`;
+        html += filtered.map(o =>
+            `<div class="dropdown-option ${hiddenInput.value === o ? 'selected' : ''}" data-value="${o}">${o}</div>`
+        ).join('');
+
+        optionsContainer.innerHTML = html;
+
+        // Add click handlers
+        optionsContainer.querySelectorAll('.dropdown-option').forEach(opt => {
+            opt.addEventListener('click', () => {
+                hiddenInput.value = opt.dataset.value;
+                searchInput.value = opt.dataset.value || '';
+                searchInput.placeholder = opt.dataset.value || placeholder;
+                optionsContainer.classList.remove('active');
+                applyFilters();
+            });
+        });
+    }
+
+    // Show dropdown on focus/click
+    searchInput.addEventListener('focus', () => {
+        renderOptions(searchInput.value);
+        optionsContainer.classList.add('active');
+    });
+
+    searchInput.addEventListener('click', () => {
+        renderOptions(searchInput.value);
+        optionsContainer.classList.add('active');
+    });
+
+    // Filter on input
+    searchInput.addEventListener('input', () => {
+        renderOptions(searchInput.value);
+        optionsContainer.classList.add('active');
+    });
+
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest(`#${type}Dropdown`)) {
+            optionsContainer.classList.remove('active');
+        }
+    });
+
+    // Initial render
+    renderOptions();
 }
 
 // ============================================
@@ -235,6 +289,13 @@ function resetFilters() {
     elements.teamFilter.value = '';
     elements.slaFilter.value = '';
     elements.searchInput.value = '';
+
+    // Clear searchable dropdown inputs
+    document.getElementById('agentSearch').value = '';
+    document.getElementById('agentSearch').placeholder = 'Search agents...';
+    document.getElementById('teamSearch').value = '';
+    document.getElementById('teamSearch').placeholder = 'Search teams...';
+
     document.querySelectorAll('[data-range]').forEach(btn => btn.classList.remove('active'));
 
     filteredData = [...allData];
@@ -415,13 +476,13 @@ function initCharts() {
         }
     });
 
-    // Handler Chart - horizontal bar with values
+    // Handler Chart - horizontal bar with values (scrollable, shows all handlers)
     handlerChart = new Chart(document.getElementById('handlerChart'), {
         type: 'bar',
         data: { labels: [], datasets: [] },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             indexAxis: 'y',
             plugins: {
                 legend: { display: false },
@@ -442,6 +503,54 @@ function initCharts() {
                 y: {
                     ticks: { color: '#a0a0b0', font: { size: 10 } },
                     grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+            }
+        }
+    });
+
+    // Team SLA Performance Chart - grouped bar showing SLA % and Avg Resolution per team
+    teamSlaChart = new Chart(document.getElementById('teamSlaChart'), {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { labels: { color: '#a0a0b0' } },
+                datalabels: {
+                    color: '#ffffff',
+                    anchor: 'end',
+                    align: 'top',
+                    font: { weight: 'bold', size: 10 },
+                    formatter: (value, ctx) => {
+                        if (ctx.datasetIndex === 0) return value + '%';
+                        return value;
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            if (ctx.datasetIndex === 0) return `SLA Met: ${ctx.raw}%`;
+                            return `Avg Resolution: ${ctx.raw}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    ticks: { color: '#22c55e' },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    title: { display: true, text: 'SLA Met %', color: '#22c55e' }
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    ticks: { color: '#6366f1' },
+                    grid: { display: false },
+                    title: { display: true, text: 'Avg Resolution (min)', color: '#6366f1' }
                 }
             }
         }
@@ -497,7 +606,7 @@ function updateCharts() {
     }];
     slaChart.update();
 
-    // Top handlers
+    // All handlers (not just top 10) - sorted by ticket count
     const handlerData = {};
     filteredData.forEach(t => {
         const handler = t.ticket_handler_agent_name;
@@ -506,20 +615,77 @@ function updateCharts() {
         }
     });
 
-    const topHandlers = Object.entries(handlerData)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
+    const allHandlers = Object.entries(handlerData)
+        .sort((a, b) => b[1] - a[1]);
 
-    console.log('📊 Top Handlers:', topHandlers);
+    console.log('📊 All Handlers:', allHandlers.length);
 
-    handlerChart.data.labels = topHandlers.map(h => h[0]);
+    // Dynamically set canvas height based on number of handlers
+    const handlerCanvas = document.getElementById('handlerChart');
+    const handlerContainer = document.getElementById('handlerChartContainer');
+    const barHeight = 30; // height per handler in pixels
+    handlerCanvas.style.height = Math.max(280, allHandlers.length * barHeight) + 'px';
+
+    handlerChart.data.labels = allHandlers.map(h => h[0]);
     handlerChart.data.datasets = [{
-        data: topHandlers.map(h => h[1]),
+        data: allHandlers.map(h => h[1]),
         backgroundColor: 'rgba(139, 92, 246, 0.7)',
         borderColor: 'rgba(139, 92, 246, 1)',
         borderWidth: 1
     }];
     handlerChart.update();
+
+    // Team SLA Performance with Avg Resolution Time
+    const teamSlaData = {};
+    filteredData.forEach(t => {
+        const team = t.current_team;
+        if (team) {
+            if (!teamSlaData[team]) {
+                teamSlaData[team] = { met: 0, missed: 0, total: 0, resolutionMinutes: [] };
+            }
+            teamSlaData[team].total++;
+            if (t.sla === 'Met') teamSlaData[team].met++;
+            if (t.sla === 'Missed') teamSlaData[team].missed++;
+
+            // Parse resolution time
+            const resMin = parseResolutionTime(t.resolution_time);
+            if (resMin > 0) teamSlaData[team].resolutionMinutes.push(resMin);
+        }
+    });
+
+    const teamNames = Object.keys(teamSlaData).sort();
+    const slaMetPct = teamNames.map(t => {
+        const d = teamSlaData[t];
+        const slaTotalCount = d.met + d.missed;
+        return slaTotalCount > 0 ? Math.round((d.met / slaTotalCount) * 100) : 0;
+    });
+    const avgResolution = teamNames.map(t => {
+        const resArr = teamSlaData[t].resolutionMinutes;
+        if (resArr.length === 0) return 0;
+        const avg = resArr.reduce((a, b) => a + b, 0) / resArr.length;
+        return Math.round(avg);
+    });
+
+    teamSlaChart.data.labels = teamNames;
+    teamSlaChart.data.datasets = [
+        {
+            label: 'SLA Met %',
+            data: slaMetPct,
+            backgroundColor: 'rgba(34, 197, 94, 0.7)',
+            borderColor: 'rgba(34, 197, 94, 1)',
+            borderWidth: 1,
+            yAxisID: 'y'
+        },
+        {
+            label: 'Avg Resolution (min)',
+            data: avgResolution,
+            backgroundColor: 'rgba(99, 102, 241, 0.7)',
+            borderColor: 'rgba(99, 102, 241, 1)',
+            borderWidth: 1,
+            yAxisID: 'y1'
+        }
+    ];
+    teamSlaChart.update();
 }
 
 // ============================================
@@ -544,7 +710,7 @@ function renderTable() {
 
     // Render
     if (pageData.length === 0) {
-        elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">No tickets found</td></tr>';
+        elements.tableBody.innerHTML = '<tr><td colspan="7" class="loading">No tickets found</td></tr>';
     } else {
         elements.tableBody.innerHTML = pageData.map((ticket, index) => `
             <tr class="clickable-row" data-index="${start + index}">
@@ -555,7 +721,6 @@ function renderTable() {
                 <td>${ticket.resolution_time || '-'}</td>
                 <td>${ticket.sla ? `<span class="sla-badge sla-${ticket.sla.toLowerCase()}">${ticket.sla}</span>` : '-'}</td>
                 <td>${ticket.issue_category || '-'}</td>
-                <td title="${(ticket.description_last_ticket_note || '').substring(0, 200)}">${truncate(ticket.description_last_ticket_note, 50)}</td>
             </tr>
         `).join('');
 

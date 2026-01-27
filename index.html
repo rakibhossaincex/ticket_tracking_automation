@@ -46,19 +46,23 @@
                 </div>
 
                 <!-- Agent Filter -->
-                <div class="filter-group">
+                <div class="filter-group searchable">
                     <label>Handler</label>
-                    <select id="agentFilter" class="filter-select">
-                        <option value="">All Agents</option>
-                    </select>
+                    <div class="searchable-dropdown" id="agentDropdown">
+                        <input type="text" id="agentSearch" placeholder="Search agents..." autocomplete="off">
+                        <div class="dropdown-options" id="agentOptions"></div>
+                    </div>
+                    <input type="hidden" id="agentFilter" value="">
                 </div>
 
                 <!-- Team Filter -->
-                <div class="filter-group">
+                <div class="filter-group searchable">
                     <label>Team</label>
-                    <select id="teamFilter" class="filter-select">
-                        <option value="">All Teams</option>
-                    </select>
+                    <div class="searchable-dropdown" id="teamDropdown">
+                        <input type="text" id="teamSearch" placeholder="Search teams..." autocomplete="off">
+                        <div class="dropdown-options" id="teamOptions"></div>
+                    </div>
+                    <input type="hidden" id="teamFilter" value="">
                 </div>
 
                 <!-- SLA Filter -->
@@ -131,9 +135,15 @@
                 <h3>SLA Performance</h3>
                 <canvas id="slaChart"></canvas>
             </div>
-            <div class="chart-card">
+            <div class="chart-card scrollable-chart">
                 <h3>Top Handlers</h3>
-                <canvas id="handlerChart"></canvas>
+                <div class="chart-scroll-container" id="handlerChartContainer">
+                    <canvas id="handlerChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card chart-wide">
+                <h3>Team SLA Performance & Avg Resolution Time</h3>
+                <canvas id="teamSlaChart"></canvas>
             </div>
         </section>
 
@@ -161,12 +171,11 @@
                             <th data-sort="resolution_time">Resolution Time ↕</th>
                             <th data-sort="sla">SLA ↕</th>
                             <th data-sort="issue_category">Category ↕</th>
-                            <th>Description</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody">
                         <tr>
-                            <td colspan="8" class="loading">Loading data...</td>
+                            <td colspan="7" class="loading">Loading data...</td>
                         </tr>
                     </tbody>
                 </table>
