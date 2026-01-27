@@ -492,6 +492,10 @@ th:hover {
 
 td {
     font-size: 0.9rem;
+    white-space: normal;
+    word-wrap: break-word;
+    max-width: 350px;
+    line-height: 1.5;
 }
 
 tr:hover td {

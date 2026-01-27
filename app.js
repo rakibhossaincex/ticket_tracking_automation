@@ -106,6 +106,12 @@ async function init() {
 
     // Load data
     await loadData();
+
+    // Auto-refresh data every 5 minutes (300000ms)
+    setInterval(async () => {
+        console.log('🔄 Auto-refreshing data...');
+        await loadData();
+    }, 300000);
 }
 
 // ============================================
@@ -479,7 +485,7 @@ function initCharts() {
         }
     });
 
-    // Handler Chart - horizontal bar with values (scrollable, shows all handlers)
+    // Handler Chart - horizontal bar with values (top 10)
     handlerChart = new Chart(document.getElementById('handlerChart'), {
         type: 'bar',
         data: { labels: [], datasets: [] },
@@ -490,9 +496,30 @@ function initCharts() {
             plugins: {
                 legend: { display: false },
                 datalabels: {
-                    color: '#ffffff',
-                    anchor: 'end',
-                    align: 'right',
+                    color: (context) => {
+                        // Get max value for comparison
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        // Show white inside if bar is > 80% of max, else show outside
+                        return value / max > 0.8 ? '#ffffff' : '#ffffff';
+                    },
+                    anchor: (context) => {
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        // If bar is > 80% of max, anchor at start (inside)
+                        return value / max > 0.8 ? 'start' : 'end';
+                    },
+                    align: (context) => {
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        // If bar is > 80% of max, align right (inside bar)
+                        return value / max > 0.8 ? 'right' : 'right';
+                    },
+                    offset: (context) => {
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        return value / max > 0.8 ? 8 : 4;
+                    },
                     font: { weight: 'bold', size: 11 },
                     formatter: (value) => value > 0 ? value : ''
                 }
