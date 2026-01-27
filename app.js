@@ -909,73 +909,76 @@ function handleOutsideClick(e) {
 }
 
 // ============================================
-// ALL HANDLERS MODAL
+// ALL HANDLERS MODAL (Paginated Table)
 // ============================================
+
+let handlersCurrentPage = 1;
+const HANDLERS_PER_PAGE = 15;
 
 function showAllHandlersModal() {
     const modal = document.getElementById('handlersModal');
     modal.classList.add('active');
 
-    // Initialize the all handlers chart if not done
-    if (!allHandlersChart) {
-        allHandlersChart = new Chart(document.getElementById('allHandlersChart'), {
-            type: 'bar',
-            data: { labels: [], datasets: [] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                indexAxis: 'y',
-                plugins: {
-                    legend: { display: false },
-                    datalabels: {
-                        color: '#ffffff',
-                        anchor: 'end',
-                        align: 'right',
-                        font: { weight: 'bold', size: 12 },
-                        formatter: (value) => value > 0 ? value : ''
-                    }
-                },
-                scales: {
-                    x: {
-                        ticks: { color: '#a0a0b0' },
-                        grid: { color: 'rgba(255,255,255,0.05)' },
-                        beginAtZero: true
-                    },
-                    y: {
-                        ticks: {
-                            color: '#a0a0b0',
-                            font: { size: 12 },
-                            autoSkip: false
-                        },
-                        grid: { color: 'rgba(255,255,255,0.05)' }
-                    }
-                }
-            }
-        });
-    }
+    handlersCurrentPage = 1;
+    renderHandlersPage();
 
-    // Set canvas height based on all handlers (40px per handler for proper spacing)
-    const allHandlers = window.allHandlersData || [];
-    const canvas = document.getElementById('allHandlersChart');
-    const heightPerHandler = 40;
-    canvas.style.height = Math.max(600, allHandlers.length * heightPerHandler) + 'px';
+    // Event listeners for pagination
+    document.getElementById('handlersPrev').onclick = () => {
+        if (handlersCurrentPage > 1) {
+            handlersCurrentPage--;
+            renderHandlersPage();
+        }
+    };
 
-    // Update chart data with proper bar sizing
-    allHandlersChart.data.labels = allHandlers.map(h => h[0]);
-    allHandlersChart.data.datasets = [{
-        data: allHandlers.map(h => h[1]),
-        backgroundColor: 'rgba(139, 92, 246, 0.7)',
-        borderColor: 'rgba(139, 92, 246, 1)',
-        borderWidth: 1,
-        barThickness: 20,
-        categoryPercentage: 0.6,
-        barPercentage: 0.8
-    }];
-    allHandlersChart.update();
+    document.getElementById('handlersNext').onclick = () => {
+        const allHandlers = window.allHandlersData || [];
+        const totalPages = Math.ceil(allHandlers.length / HANDLERS_PER_PAGE);
+        if (handlersCurrentPage < totalPages) {
+            handlersCurrentPage++;
+            renderHandlersPage();
+        }
+    };
 
     // Add event listeners
     document.addEventListener('keydown', handleHandlersEscapeKey);
     modal.addEventListener('click', handleHandlersOutsideClick);
+}
+
+function renderHandlersPage() {
+    const allHandlers = window.allHandlersData || [];
+    const totalPages = Math.ceil(allHandlers.length / HANDLERS_PER_PAGE);
+    const maxCount = allHandlers.length > 0 ? allHandlers[0][1] : 1;
+
+    const start = (handlersCurrentPage - 1) * HANDLERS_PER_PAGE;
+    const end = start + HANDLERS_PER_PAGE;
+    const pageHandlers = allHandlers.slice(start, end);
+
+    // Update page info
+    document.getElementById('handlersPageInfo').textContent = `Page ${handlersCurrentPage} of ${totalPages}`;
+
+    // Update button states
+    document.getElementById('handlersPrev').disabled = handlersCurrentPage === 1;
+    document.getElementById('handlersNext').disabled = handlersCurrentPage === totalPages;
+
+    // Render handlers
+    const container = document.getElementById('handlersTableContainer');
+    container.innerHTML = pageHandlers.map((handler, idx) => {
+        const rank = start + idx + 1;
+        const name = handler[0];
+        const count = handler[1];
+        const percentage = (count / maxCount) * 100;
+
+        return `
+            <div class="handler-row">
+                <span class="handler-rank">#${rank}</span>
+                <span class="handler-name">${name}</span>
+                <div class="handler-bar-container">
+                    <div class="handler-bar" style="width: ${percentage}%"></div>
+                </div>
+                <span class="handler-count">${count}</span>
+            </div>
+        `;
+    }).join('');
 }
 
 function closeHandlersModal() {

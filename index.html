@@ -204,13 +204,20 @@
 
     <!-- All Handlers Modal -->
     <div id="handlersModal" class="modal">
-        <div class="modal-content" style="max-width: 1200px; width: 95%;">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
             <div class="modal-header">
                 <h2>All Handlers Performance</h2>
                 <button class="modal-close" onclick="closeHandlersModal()">&times;</button>
             </div>
-            <div class="modal-body handler-modal-chart">
-                <canvas id="allHandlersChart"></canvas>
+            <div class="modal-body">
+                <div class="handlers-pagination">
+                    <button id="handlersPrev" class="btn btn-secondary">← Previous</button>
+                    <span id="handlersPageInfo">Page 1 of 1</span>
+                    <button id="handlersNext" class="btn btn-secondary">Next →</button>
+                </div>
+                <div id="handlersTableContainer" class="handlers-table-container">
+                    <!-- Handler rows will be rendered here -->
+                </div>
             </div>
         </div>
     </div>
