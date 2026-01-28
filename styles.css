@@ -829,20 +829,17 @@ td:last-child {
     color: var(--text-primary);
 }
 
-/* Compact Agent SLA Table - Substantially reduced spacing & larger font */
+/* Compact Agent SLA Table - Substantially reduced spacing & significantly larger font */
 .agent-sla-table.agent-sla-compact {
-    font-size: 1.1rem;
-    width: auto !important;
-    /* Prevent table from stretching across the card */
-    min-width: 0 !important;
+    font-size: 1.3rem;
+    /* Increased 2 levels */
+    width: 100% !important;
+    /* Fit to container width */
 }
 
 .agent-sla-table.agent-sla-compact th,
 .agent-sla-table.agent-sla-compact td {
-    padding: 2px 1px !important;
-    /* Extremely tight horizontal spacing */
-    line-height: 1.1;
+    padding: 4px 8px !important;
+    /* Balanced padding for compactness and readability */
+    line-height: 1.2;
 }
-
-/* Add a bit of gap between the columns using a more surgical approach if needed,
-   but for now, 1px horizontal padding is as tight as possible. */
