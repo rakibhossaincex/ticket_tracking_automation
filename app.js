@@ -886,15 +886,16 @@ function updateCharts() {
     // =========================
     const productTypeCounts = {};
     filteredData.forEach(t => {
-        let pt = t.product_type || 'Unknown';
+        let pt = t.product_type || '';
         // Normalize: Stellar Instant counts as CFD
         const ptLower = pt.toLowerCase();
         if (ptLower === 'cfds' || ptLower === 'cfd' || ptLower.includes('stellar') || ptLower.includes('instant')) {
             pt = 'CFD';
         } else if (ptLower === 'futures') {
             pt = 'Futures';
-        } else if (!pt || pt === '') {
-            pt = 'Unknown';
+        } else {
+            // Skip unknown/empty product types for the pie chart
+            return;
         }
         productTypeCounts[pt] = (productTypeCounts[pt] || 0) + 1;
     });
