@@ -638,7 +638,8 @@ function initCharts() {
                     title: { display: true, text: 'Avg Resolution (min)', color: '#6366f1' }
                 }
             }
-        });
+        }
+    });
 
     // Average Resolution by Team Chart
     avgResChart = new Chart(document.getElementById('avgResChart'), {
