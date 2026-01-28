@@ -121,8 +121,8 @@
             </div>
         </section>
 
-        <!-- Charts Grid -->
-        <section class="charts-grid">
+        <!-- Charts Row 1: 50-50 layout -->
+        <section class="charts-grid-50">
             <div class="chart-card">
                 <h3>Daily Ticket Volume</h3>
                 <canvas id="dailyChart"></canvas>
@@ -131,6 +131,10 @@
                 <h3>Team Distribution</h3>
                 <canvas id="teamChart"></canvas>
             </div>
+        </section>
+
+        <!-- Charts Row 2: 30-70 layout -->
+        <section class="charts-grid-30">
             <div class="chart-card">
                 <h3>SLA Performance</h3>
                 <div id="slaChartContainer">
@@ -149,6 +153,10 @@
                 </div>
                 <canvas id="handlerChart"></canvas>
             </div>
+        </section>
+
+        <!-- Charts Row 3: 30-70 layout -->
+        <section class="charts-grid-30">
             <div class="chart-card">
                 <h3>Product Type Distribution</h3>
                 <canvas id="productTypeChart"></canvas>
@@ -158,7 +166,7 @@
                     <h3>Agent SLA Performance</h3>
                 </div>
                 <div class="agent-sla-table-container" id="agentSlaContainer">
-                    <table class="agent-sla-table" id="agentSlaTable">
+                    <table class="agent-sla-table agent-sla-compact" id="agentSlaTable">
                         <thead>
                             <tr>
                                 <th>Agent</th>
@@ -173,7 +181,11 @@
                     </table>
                 </div>
             </div>
-            <div class="chart-card chart-wide">
+        </section>
+
+        <!-- Charts Row 4: Full width -->
+        <section class="charts-grid-full">
+            <div class="chart-card">
                 <h3>Team SLA Performance & Avg Resolution Time</h3>
                 <canvas id="teamSlaChart"></canvas>
             </div>

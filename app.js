@@ -447,7 +447,15 @@ function initCharts() {
                 }
             },
             scales: {
-                x: { ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: {
+                    ticks: {
+                        color: '#a0a0b0',
+                        autoSkip: true,
+                        maxRotation: 45,
+                        minRotation: 0
+                    },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                },
                 y: { ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
         }
@@ -463,7 +471,7 @@ function initCharts() {
                 legend: {
                     position: 'right',
                     labels: {
-                        color: '#a0a0b0',
+                        color: '#ffffff',
                         font: { size: 10 },
                         generateLabels: function (chart) {
                             const data = chart.data;

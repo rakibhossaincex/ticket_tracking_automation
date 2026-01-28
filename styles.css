@@ -255,10 +255,26 @@ body {
     opacity: 0.8;
 }
 
-/* Charts Grid */
-.charts-grid {
+/* Charts Grid - 50-50 layout (Daily Volume + Team Distribution) */
+.charts-grid-50 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+/* Charts Grid - 30-70 layout (SLA, Handlers, Product Type, Agent SLA) */
+.charts-grid-30 {
     display: grid;
     grid-template-columns: 30fr 70fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+/* Charts Grid - Full width (Team SLA Performance) */
+.charts-grid-full {
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 20px;
     margin-bottom: 24px;
 }
@@ -811,4 +827,10 @@ td:last-child {
 
 .legend-tooltip:hover {
     color: var(--text-primary);
+}
+
+/* Compact Agent SLA Table - 20% reduced spacing (Original: 10px 12px) */
+.agent-sla-table.agent-sla-compact th,
+.agent-sla-table.agent-sla-compact td {
+    padding: 8px 9.5px;
 }
