@@ -847,13 +847,32 @@ function updateCharts() {
     ];
     teamSlaChart.update();
 
-    // Average Resolution by Team standalone chart
-    avgResChart.data.labels = shortTeamNames;
+    // Average Resolution: Working vs Non-Working Hours
+    const workHours = { sum: 0, count: 0 };
+    const nonWorkHours = { sum: 0, count: 0 };
+
+    filteredData.forEach(t => {
+        const resMin = parseResolutionTime(t.resolution_time);
+        if (resMin > 0) {
+            if (t.resolved_during_office_hours === true) {
+                workHours.sum += resMin;
+                workHours.count++;
+            } else if (t.resolved_during_office_hours === false) {
+                nonWorkHours.sum += resMin;
+                nonWorkHours.count++;
+            }
+        }
+    });
+
+    const avgWork = workHours.count > 0 ? Math.round(workHours.sum / workHours.count) : 0;
+    const avgNonWork = nonWorkHours.count > 0 ? Math.round(nonWorkHours.sum / nonWorkHours.count) : 0;
+
+    avgResChart.data.labels = ['Working Hours', 'Non-Working'];
     avgResChart.data.datasets = [{
-        label: 'Avg Resolution Time (Min)',
-        data: avgResolution,
-        backgroundColor: 'rgba(99, 102, 241, 0.7)',
-        borderColor: 'rgba(99, 102, 241, 1)',
+        label: 'Avg Minutes',
+        data: [avgWork, avgNonWork],
+        backgroundColor: ['#22c55e', '#6366f1'],
+        borderColor: ['#22c55e', '#6366f1'],
         borderWidth: 1
     }];
     avgResChart.update();
