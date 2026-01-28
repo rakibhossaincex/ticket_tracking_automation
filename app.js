@@ -1136,10 +1136,7 @@ const fieldLabels = {
     resolution_time: 'Resolution Time',
     sla: 'SLA Status',
     issue_category: 'Issue Category',
-    description_last_ticket_note: 'Description',
-    forwarded_to: 'Forwarded To',
-    unique_id: 'Unique ID',
-    created_at: 'Created At'
+    description_last_ticket_note: 'Description'
 };
 
 function showTicketDetails(ticket) {
@@ -1155,7 +1152,6 @@ function showTicketDetails(ticket) {
         'resolution_time',
         'sla',
         'issue_category',
-        'forwarded_to',
         'description_last_ticket_note'
     ];
 
@@ -1184,9 +1180,11 @@ function showTicketDetails(ticket) {
         }
     });
 
-    // Add any additional fields not in the order list
+    // Add any additional fields not in the order list, except excluded technical fields
+    const excludedFields = ['forwarded_to', 'created_at', 'updated_at', 'id', 'unique_id'];
+
     Object.keys(ticket).forEach(field => {
-        if (!fieldOrder.includes(field) && ticket[field] !== null && ticket[field] !== undefined && ticket[field] !== '') {
+        if (!fieldOrder.includes(field) && !excludedFields.includes(field) && ticket[field] !== null && ticket[field] !== undefined && ticket[field] !== '') {
             const label = fieldLabels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             html += `
                 <div class="detail-item">
