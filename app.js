@@ -22,7 +22,7 @@ let sortColumn = 'date';
 let sortDirection = 'desc';
 
 // Charts
-let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart;
+let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart;
 
 // DOM Elements
 const elements = {
@@ -638,6 +638,39 @@ function initCharts() {
                     title: { display: true, text: 'Avg Resolution (min)', color: '#6366f1' }
                 }
             }
+        });
+
+    // Average Resolution by Team Chart
+    avgResChart = new Chart(document.getElementById('avgResChart'), {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                datalabels: {
+                    color: '#ffffff',
+                    anchor: 'end',
+                    align: 'top',
+                    offset: 4,
+                    font: { weight: 'bold', size: 10 },
+                    formatter: (value) => value > 0 ? value + 'm' : ''
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `Avg Resolution: ${ctx.raw} minutes`
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { color: '#ffffff', font: { size: 9 } }, grid: { display: false } },
+                y: {
+                    ticks: { color: '#ffffff' },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    title: { display: true, text: 'Minutes', color: '#ffffff' }
+                }
+            }
         }
     });
 }
@@ -812,6 +845,17 @@ function updateCharts() {
         }
     ];
     teamSlaChart.update();
+
+    // Average Resolution by Team standalone chart
+    avgResChart.data.labels = shortTeamNames;
+    avgResChart.data.datasets = [{
+        label: 'Avg Resolution Time (Min)',
+        data: avgResolution,
+        backgroundColor: 'rgba(99, 102, 241, 0.7)',
+        borderColor: 'rgba(99, 102, 241, 1)',
+        borderWidth: 1
+    }];
+    avgResChart.update();
 
     // =========================
     // Product Type Pie Chart
