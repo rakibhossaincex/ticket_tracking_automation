@@ -133,10 +133,10 @@
             </div>
         </section>
 
-        <!-- Charts Row 2: 30-70 layout -->
-        <section class="charts-grid-30">
+        <!-- Charts Row 2: Standalone SLA Breakdown -->
+        <section class="charts-grid-full">
             <div class="chart-card">
-                <h3>SLA Performance</h3>
+                <h3>SLA Breakdown</h3>
                 <div id="slaChartContainer">
                     <canvas id="slaChart"></canvas>
                 </div>
@@ -146,6 +146,10 @@
                         Forwarded tickets (hover for details)</span>
                 </div>
             </div>
+        </section>
+
+        <!-- Charts Row 3: 3-column layout -->
+        <section class="charts-grid-3">
             <div class="chart-card">
                 <div class="chart-header">
                     <h3>Top 10 Handlers</h3>
@@ -153,10 +157,6 @@
                 </div>
                 <canvas id="handlerChart"></canvas>
             </div>
-        </section>
-
-        <!-- Charts Row 3: 25-25-50 layout -->
-        <section class="charts-grid-25-25-50">
             <div class="chart-card">
                 <h3>Product Type Distribution</h3>
                 <canvas id="productTypeChart"></canvas>
@@ -167,6 +167,10 @@
                 </div>
                 <canvas id="avgResChart"></canvas>
             </div>
+        </section>
+
+        <!-- Charts Row 4: Standalone Agent SLA Performance -->
+        <section class="charts-grid-full">
             <div class="chart-card">
                 <div class="chart-header">
                     <h3>Agent SLA Performance</h3>
