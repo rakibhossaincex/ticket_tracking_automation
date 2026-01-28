@@ -852,9 +852,13 @@ function updateCharts() {
     const nonWorkHours = { sum: 0, count: 0 };
 
     filteredData.forEach(t => {
+        const team = (t.current_team || "").toLowerCase();
+        const is24x7 = team.includes("pro solution") || team.includes("cex reversal") || team.includes("ticket dependencies");
+
         const resMin = parseResolutionTime(t.resolution_time);
         if (resMin > 0) {
-            if (t.resolved_during_office_hours === true) {
+            // Force 24/7 teams into "Working Hours"
+            if (is24x7 || t.resolved_during_office_hours === true) {
                 workHours.sum += resMin;
                 workHours.count++;
             } else if (t.resolved_during_office_hours === false) {

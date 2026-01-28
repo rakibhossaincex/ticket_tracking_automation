@@ -837,19 +837,56 @@ td:last-child {
     color: var(--text-primary);
 }
 
-/* Extreme Compact Agent SLA Table */
+/* Extreme Compact Agent SLA Table - Round 5 Refinement */
 .agent-sla-table.agent-sla-compact {
     font-size: 1.25rem;
-    width: 100%;
+    width: 100% !important;
+    table-layout: fixed;
+    /* Force fixed layout to squeeze columns */
 }
 
 .agent-sla-table.agent-sla-compact th,
 .agent-sla-table.agent-sla-compact td {
-    padding: 3px 0px !important;
-    /* No column spacing as requested */
+    padding: 1.5px 0px !important;
+    /* 50% reduction from 3px */
     line-height: 1.1;
     text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
+
+/* Specific column widths to force them closer */
+.agent-sla-table.agent-sla-compact th:nth-child(1),
+.agent-sla-table.agent-sla-compact td:nth-child(1) {
+    width: 45%;
+}
+
+/* Agent */
+.agent-sla-table.agent-sla-compact th:nth-child(2),
+.agent-sla-table.agent-sla-compact td:nth-child(2) {
+    width: 12%;
+}
+
+/* Total */
+.agent-sla-table.agent-sla-compact th:nth-child(3),
+.agent-sla-table.agent-sla-compact td:nth-child(3) {
+    width: 12%;
+}
+
+/* Met */
+.agent-sla-table.agent-sla-compact th:nth-child(4),
+.agent-sla-table.agent-sla-compact td:nth-child(4) {
+    width: 15%;
+}
+
+/* Missed */
+.agent-sla-table.agent-sla-compact th:nth-child(5),
+.agent-sla-table.agent-sla-compact td:nth-child(5) {
+    width: 16%;
+}
+
+/* SLA % */
 
 .agent-sla-table.agent-sla-compact th:first-child,
 .agent-sla-table.agent-sla-compact td:first-child {
