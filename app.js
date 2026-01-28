@@ -26,7 +26,7 @@ const selectedAgents = new Set();
 const selectedTeams = new Set();
 
 // Charts
-let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart;
+let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart, categoryChart;
 
 // DOM Elements
 const elements = {
@@ -1020,6 +1020,68 @@ function updateCharts() {
     const naSlaCount = filteredData.filter(t => t.sla === 'N/A').length;
     if (elements.slaNaNote) {
         elements.slaNaNote.style.display = naSlaCount > 0 ? 'block' : 'none';
+    }
+
+    // =========================
+    // Ticket Category Distribution Chart
+    // =========================
+    const categoryCounts = {};
+    filteredData.forEach(t => {
+        const cat = t.issue_category || 'Uncategorized';
+        categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    });
+
+    // Sort by count descending and take top 10
+    const sortedCategories = Object.entries(categoryCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+    const catLabels = sortedCategories.map(c => c[0]);
+    const catData = sortedCategories.map(c => c[1]);
+
+    const categoryCtx = document.getElementById('categoryChart');
+    if (categoryCtx) {
+        if (categoryChart) categoryChart.destroy();
+        categoryChart = new Chart(categoryCtx.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: catLabels,
+                datasets: [{
+                    label: 'Tickets',
+                    data: catData,
+                    backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                    borderColor: 'rgba(99, 102, 241, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#a0a0b0' }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { color: '#ffffff', font: { size: 11 } }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        color: '#ffffff',
+                        anchor: 'end',
+                        align: 'right',
+                        font: { weight: 'bold', size: 11 },
+                        formatter: (value) => value
+                    }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
     }
 }
 
