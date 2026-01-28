@@ -112,6 +112,9 @@ async function init() {
     // See All Handlers button
     document.getElementById('seeAllHandlers').addEventListener('click', showAllHandlersModal);
 
+    // See All Categories button
+    document.getElementById('seeAllCategories').addEventListener('click', showAllCategoriesModal);
+
     // Load data
     await loadData();
 
@@ -1066,7 +1069,14 @@ function updateCharts() {
                     },
                     y: {
                         grid: { display: false },
-                        ticks: { color: '#ffffff', font: { size: 11 } }
+                        ticks: {
+                            color: '#ffffff',
+                            font: { size: 11 },
+                            callback: function (value) {
+                                const label = this.getLabelForValue(value);
+                                return label.length > 35 ? label.substring(0, 35) + '...' : label;
+                            }
+                        }
                     }
                 },
                 plugins: {
@@ -1368,6 +1378,94 @@ function handleHandlersEscapeKey(e) {
 
 function handleHandlersOutsideClick(e) {
     if (e.target.classList.contains('modal')) closeHandlersModal();
+}
+
+// ============================================
+// ALL CATEGORIES MODAL
+// ============================================
+
+let allCategoriesData = [];
+let categoriesPageNum = 1;
+const categoriesPageSize = 15;
+
+function showAllCategoriesModal() {
+    const modal = document.getElementById('categoriesModal');
+
+    // Build category data from filteredData
+    const categoryCounts = {};
+    filteredData.forEach(t => {
+        const cat = t.issue_category || 'Uncategorized';
+        categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    });
+
+    allCategoriesData = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]);
+    categoriesPageNum = 1;
+    renderCategoriesPage();
+
+    modal.classList.add('active');
+
+    // Event listeners for pagination
+    document.getElementById('categoriesPrev').onclick = () => {
+        if (categoriesPageNum > 1) {
+            categoriesPageNum--;
+            renderCategoriesPage();
+        }
+    };
+    document.getElementById('categoriesNext').onclick = () => {
+        const totalPages = Math.ceil(allCategoriesData.length / categoriesPageSize);
+        if (categoriesPageNum < totalPages) {
+            categoriesPageNum++;
+            renderCategoriesPage();
+        }
+    };
+
+    document.addEventListener('keydown', handleCategoriesEscapeKey);
+    modal.addEventListener('click', handleCategoriesOutsideClick);
+}
+
+function renderCategoriesPage() {
+    const totalPages = Math.max(1, Math.ceil(allCategoriesData.length / categoriesPageSize));
+    document.getElementById('categoriesPageInfo').textContent = `Page ${categoriesPageNum} of ${totalPages}`;
+
+    const start = (categoriesPageNum - 1) * categoriesPageSize;
+    const end = start + categoriesPageSize;
+    const pageCategories = allCategoriesData.slice(start, end);
+
+    const maxCount = allCategoriesData.length > 0 ? allCategoriesData[0][1] : 1;
+
+    const container = document.getElementById('categoriesTableContainer');
+    container.innerHTML = pageCategories.map((cat, idx) => {
+        const rank = start + idx + 1;
+        const name = cat[0];
+        const count = cat[1];
+        const percentage = (count / maxCount) * 100;
+
+        return `
+            <div class="handler-row">
+                <span class="handler-rank">#${rank}</span>
+                <span class="handler-name" title="${name}">${name}</span>
+                <div class="handler-bar-container">
+                    <div class="handler-bar" style="width: ${percentage}%"></div>
+                </div>
+                <span class="handler-count">${count}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function closeCategoriesModal() {
+    const modal = document.getElementById('categoriesModal');
+    modal.classList.remove('active');
+    document.removeEventListener('keydown', handleCategoriesEscapeKey);
+    modal.removeEventListener('click', handleCategoriesOutsideClick);
+}
+
+function handleCategoriesEscapeKey(e) {
+    if (e.key === 'Escape') closeCategoriesModal();
+}
+
+function handleCategoriesOutsideClick(e) {
+    if (e.target.classList.contains('modal')) closeCategoriesModal();
 }
 
 // ============================================
