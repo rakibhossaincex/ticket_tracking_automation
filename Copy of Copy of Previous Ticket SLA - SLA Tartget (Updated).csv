@@ -1,0 +1,127 @@
+,SL,Ticket Category,SLA (Weekdays),,SLA (Weekend),
+,,,Office hour,After office hour,Office hour,After office hour
+CEx,1,CEx - 2FA Issue,1H,1H,1H,1H
+,2,CEx - Account is Paused Due to Inactivity,1H,1H,1H,1H
+,3,CEx - Account Merging,1H,1H,1H,1H
+,4,CEx - Account Pause/Unpause,1H,1H,1H,1H
+,5,CEx - Add-on Issue,1H,1H,1H,1H
+,6,CEx - Breach Event Explanation,1H,1H,1H,1H
+,7,CEx - Claim BOGO Free Account,1H,1H,1H,1H
+,8,"CEx - Client Made Bank Transfer, but Account/Reset Pending",1H,1H,1H,1H
+,9,"CEx - Client Made Card Payment, but Account Pending",1H,1H,1H,1H
+,10,"CEx - Client Made Card Payment, but Reset Pending",1H,1H,1H,1H
+,11,CEx - Client Made Crypto Payment But Account Reset Pending,1H,1H,1H,1H
+,12,"CEx - Client Made Crypto Payment, but Account Activation Pending",1H,1H,1H,1H
+,13,CEx - Client Paid Through Payprocc but Account Activation/Reset Pending,1H,1H,1H,1H
+,14,CEx - Dashboard Update Issue (Days),1H,1H,1H,1H
+,15,CEx - Free Trail Account Breached Issue,1H,1H,1H,1H
+,16,CEx - Giveaway Account Creation (Instagram),1H,1H,1H,1H
+,17,CEx - Invalid Account/Login Issue,1H,1H,1H,1H
+,18,CEx - Pending Order Did Not Execute,1H,1H,1H,1H
+,19,CEx - Referred To The Technical Expert Team.,1H,1H,1H,1H
+,20,CEx - Reset with Previous Payment,1H,1H,1H,1H
+,21,CEx - Scale Up,1H,1H,1H,1H
+,22,CEx - SL/TP Did Not Hit,1H,1H,1H,1H
+,23,CEx - Slippage,1H,1H,1H,1H
+,24,CEx - Spread,1H,1H,1H,1H
+,25,CEx - Swap Explanation,1H,1H,1H,1H
+,26,CEx - Switching Account Plan/Platform,1H,1H,1H,1H
+,27,CEx - Trade Disabled Issue,1H,1H,1H,1H
+,28,CEx - Unauthorized trade Explanation,1H,1H,1H,1H
+,29,CEx - New Dashboard Registration Approval,1H,1H,1H,1H
+,30,CEx - Request to Change Email Address,1H,1H,1H,1H
+,31,CEx - Profile Information Update,1H,1H,1H,1H
+,32,"CEx - Meet The Criteria For A Certificate, But It Appears To Be Inaccessible.",1H,1H,1H,1H
+,,,,,,
+,,,,,,
+BOPs,1,BO - Change of Payout Address & Method,12H,24H,12H,24H
+,2,BO - Client facing RISE Work Issue,12H,24H,12H,24H
+,3,BO - Client wants to purchase account(s) with payout,12H,24H,12H,24H
+,4,BO - Competition KYC,12H,24H,12H,24H
+,5,BO - Competition Payout address,12H,24H,12H,24H
+,6,BO - Complaint About Discrepancy in Profit Share,12H,24H,12H,24H
+,7,"BO - KYC/Agreement Sign Done, Yet to Receive FundedNext Account/Unable to Sign Agreement",12H,24H,12H,24H
+,8,BO - Max Allocation Issue,12H,24H,12H,24H
+,9,BO - Need Update of KYC,12H,24H,12H,24H
+,10,BO - Veriff Doesn’t Accept KYC Documents / Unable to Submit KYC Documents,12H,24H,12H,24H
+,11,BO - Need an updated of current payout,12H,24H,12H,24H
+,,,,,,
+,,,,,,
+PT,1,"PT - Client Made Crypto Payment, but Account Activation/Reset Pending (Wrong Amount)",12H,12H,24H,24H
+,2,PT - Client Made Crypto Payment But Account Activation/Reset Pending (Partial/Extra),12H,12H,24H,24H
+,3,PT - Client Paid Through PayProcc But Account Activation/Reset Pending,24H,24H,24H,24H
+,4,PT - Payout Issue,24H,24H,24H,24H
+,5,PT - Refund Verification Complete but was not processed yet.,12H,12H,24H,24H
+,6,PT - TCpay payment verification,12H,12H,24H,24H
+,7,PT - Unable to complete the payment,24H,24H,24H,24H
+,8,PT - Unusual Payment Issue,24H,24H,24H,24H
+,9,PT - Client Asked For Invoice (Payout/Payment),12H,12H,24H,24H
+,10,PT - Riseworks Onboarding Issue,24H,24H,24H,24H
+,11,PT - Dispute issue,24H,24H,24H,24H
+,,,,,,
+,,,,,,
+PO,1,FUT - Contract Size Malfunction,3H,18H,66H,66H
+,2,PO - Adjustment,3H,18H,24H,24H
+,3,PO - Auto Liquidation/Breach Issue,3H,18H,24H,24H
+,4,PO - cTrader/Match-Trader Breach Event Explanation,3H,18H,24H,24H
+,5,PO - MT4/5 Breach Event Explanation,3H,18H,24H,24H
+,6,PO - Order Rejection/Unable to Trade,3H,18H,24H,24H
+,7,PO - Server Issue,3H,18H,24H,24H
+,8,PO - Trade Execution Issue,3H,18H,24H,24H
+,9,PO - Unable to Close Trade,3H,18H,24H,24H
+,10,PO - Unable to Place Order,3H,18H,24H,24H
+,11,PO - Swap Free Add-on,3H,18H,24H,24H
+,12,PO - Unusual Slippage,3H,18H,24H,24H
+,13,PO - Unauthorized trade Explanation (Discripency in IP),3H,18H,24H,24H
+,,,,,,
+,,,,,,
+TT,1,TT - Account Balance Mismatch,8H,20H,72H,72H
+,2,TT - Account Breached Due to Inactivity Period,8H,20H,72H,72H
+,3,"TT - Account Reset, But Unable to Trade",8H,20H,72H,72H
+,4,TT - Breach status not updated/Account breached due to inactivity (though active),8H,20H,72H,72H
+,5,TT - Coupon Code (Unable to add / Need to Add / Not working/ BOGO not applied),8H,20H,72H,72H
+,6,TT - Dashboard Login Issue,8H,20H,72H,72H
+,7,"TT - Eligible for KYC, Pop-Up Missing",8H,20H,72H,72H
+,8,"TT - Email Issue (OTP, Password)",8H,20H,72H,72H
+,9,TT - FundedNext Account Disappeared From Tradovate,8H,20H,72H,72H
+,10,TT - News Flag Issue,8H,20H,72H,72H
+,11,TT - Next Phase/Extension/Withdrawal Button Missing,8H,20H,72H,72H
+,12,TT - Reset order enabled but the balance wasn't reset,8H,20H,72H,72H
+,13,TT - Unable to make the payment,8H,20H,72H,72H
+,14,TT - Unusual Issue,8H,20H,72H,72H
+,15,TT- Profit Target Reached but No KYC/Agreement Pop-Up,8H,20H,72H,72H
+,16,TT - Client wants to delete his data,6H,20H,72H,72H
+,17,TT - Competition Account Disabled,6H,20H,72H,72H
+,18,TT - OTP related Issue,6H,20H,72H,72H
+,19,TT - Wrongly breached due to DLL or inactivity,6H,20H,72H,72H
+,20,TT - Month Ended In Partial Profit,5H,20H,72H,72H
+,21,TT - Breach due to duplicate transaction ID,3H,20H,72H,72H
+,22,TT - No payout method is displaying,3H,20H,72H,72H
+,23,TT - Trading Disabled in Futures Account,3H,20H,72H,72H
+,24,TT - Tradovate User Creation failed/Account connection failed,3H,20H,72H,72H
+,25,TT - Unusual Trading Cycle Issue,3H,20H,72H,72H
+,26,TT - Data Feed Issues,16H,20H,72H,72H
+,27,"TT - Name Mismatch Issue (Agreement, Platform, Certificate)",16H,20H,72H,72H
+,28,TT - Dashboard Update Issue,16H,20H,72H,72H
+,29,TT- Signed Agreement but not getting market data subscription,16H,20H,72H,72H
+,30,TT - Account not found in System/Dashboard,12H,20H,72H,72H
+,31,TT - Auto Liquidation/Unable to Place Trade After Reset,12H,20H,72H,72H
+,32,TT - Double Matrix Issue,12H,20H,72H,72H
+,33,TT - Eligible but not getting the Reset option,12H,20H,72H,72H
+,34,TT - Profit Withdrawal is Not Showing in The Dashboard.,8H,20H,72H,72H
+,35,TT - Dashboard Balance/Trade update issue,12H,20H,72H,72H
+,36,TT - Reset with Previous Payment (Futures),12H,20H,72H,72H
+,37,TT - Request to Change Email Address,8H,20H,72H,72H
+,38,TT - Force Retry button not working,12H,20H,72H,72H
+,,,,,,
+,,,,,,
+CR,1,CR - Account Got Flagged But Email Was Not Sent,3H,17H,54H,54H
+,2,CR - Need to Respond to Client’s Email / Client Missed the Interview,3H,17H,54H,54H
+,,,,,,
+,,,,,,
+CPM,1,CPM - Affiliate / Payment Partner,24H,,48H,
+,2,CPM - Banned on Discord.,,,,
+,3,CPM - Giveaway Account KYC Verification,,,,
+,4,CPM - Need To Provide Giveaway Account (Twitter/Discord),,,,
+,5,CPM - Proposal From Influencer,,,,
+,6,CPM - Unusual Issue,,,,

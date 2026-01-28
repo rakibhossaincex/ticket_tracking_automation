@@ -22,7 +22,7 @@ let sortColumn = 'date';
 let sortDirection = 'desc';
 
 // Charts
-let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart;
+let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart;
 
 // DOM Elements
 const elements = {
@@ -37,13 +37,17 @@ const elements = {
     totalTickets: document.getElementById('totalTickets'),
     slaMet: document.getElementById('slaMet'),
     slaMissed: document.getElementById('slaMissed'),
+    slaMetCount: document.getElementById('slaMetCount'),
+    slaMissedCount: document.getElementById('slaMissedCount'),
     avgResolution: document.getElementById('avgResolution'),
     tableBody: document.getElementById('tableBody'),
     pageSize: document.getElementById('pageSize'),
     prevPage: document.getElementById('prevPage'),
     nextPage: document.getElementById('nextPage'),
     pageInfo: document.getElementById('pageInfo'),
-    exportCsv: document.getElementById('exportCsv')
+    exportCsv: document.getElementById('exportCsv'),
+    slaNaNote: document.getElementById('slaNaNote'),
+    agentSlaBody: document.getElementById('agentSlaBody')
 };
 
 // Initialize Flatpickr
@@ -358,8 +362,14 @@ function updateMetrics() {
     const missedSLA = filteredData.filter(t => t.sla === 'Missed').length;
 
     elements.totalTickets.textContent = total.toLocaleString();
+
+    // SLA percentages with ticket counts
     elements.slaMet.textContent = total > 0 ? `${Math.round((metSLA / total) * 100)}%` : '-';
     elements.slaMissed.textContent = total > 0 ? `${Math.round((missedSLA / total) * 100)}%` : '-';
+
+    // SLA ticket counts
+    if (elements.slaMetCount) elements.slaMetCount.textContent = `(${metSLA})`;
+    if (elements.slaMissedCount) elements.slaMissedCount.textContent = `(${missedSLA})`;
 
     // Average resolution time
     const avgRes = calculateAverageResolution();
@@ -443,14 +453,35 @@ function initCharts() {
         }
     });
 
-    // Team Chart - shows percentages, tooltip shows count
+    // Team Chart - shows percentages, tooltip shows count, legend shows team name + count
     teamChart = new Chart(document.getElementById('teamChart'), {
         type: 'doughnut',
         data: { labels: [], datasets: [] },
         options: {
             responsive: true,
             plugins: {
-                legend: { position: 'right', labels: { color: '#a0a0b0', font: { size: 10 } } },
+                legend: {
+                    position: 'right',
+                    labels: {
+                        color: '#a0a0b0',
+                        font: { size: 10 },
+                        generateLabels: function (chart) {
+                            const data = chart.data;
+                            if (data.labels.length && data.datasets.length) {
+                                return data.labels.map((label, i) => {
+                                    const value = data.datasets[0].data[i];
+                                    return {
+                                        text: `${label} (${value})`,
+                                        fillStyle: data.datasets[0].backgroundColor[i],
+                                        hidden: false,
+                                        index: i
+                                    };
+                                });
+                            }
+                            return [];
+                        }
+                    }
+                },
                 tooltip: {
                     callbacks: {
                         label: (ctx) => `${ctx.label}: ${ctx.raw} tickets`
@@ -744,6 +775,113 @@ function updateCharts() {
         }
     ];
     teamSlaChart.update();
+
+    // =========================
+    // Product Type Pie Chart
+    // =========================
+    const productTypeCounts = {};
+    filteredData.forEach(t => {
+        let pt = t.product_type || 'Unknown';
+        // Normalize: Stellar Instant counts as CFD
+        const ptLower = pt.toLowerCase();
+        if (ptLower === 'cfds' || ptLower === 'cfd' || ptLower.includes('stellar') || ptLower.includes('instant')) {
+            pt = 'CFD';
+        } else if (ptLower === 'futures') {
+            pt = 'Futures';
+        } else if (!pt || pt === '') {
+            pt = 'Unknown';
+        }
+        productTypeCounts[pt] = (productTypeCounts[pt] || 0) + 1;
+    });
+
+    const ptLabels = Object.keys(productTypeCounts).sort();
+    const ptData = ptLabels.map(l => productTypeCounts[l]);
+    const ptTotal = ptData.reduce((a, b) => a + b, 0);
+
+    const ptColors = {
+        'CFD': 'rgba(139, 92, 246, 0.8)',
+        'Futures': 'rgba(6, 182, 212, 0.8)',
+        'Unknown': 'rgba(107, 114, 128, 0.8)'
+    };
+
+    const productTypeCtx = document.getElementById('productTypeChart');
+    if (productTypeCtx) {
+        if (productTypeChart) productTypeChart.destroy();
+        productTypeChart = new Chart(productTypeCtx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ptLabels,
+                datasets: [{
+                    data: ptData,
+                    backgroundColor: ptLabels.map(l => ptColors[l] || 'rgba(99, 102, 241, 0.8)'),
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '50%',
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { color: '#e0e0e0', padding: 15 }
+                    },
+                    datalabels: {
+                        color: '#ffffff',
+                        font: { weight: 'bold', size: 12 },
+                        formatter: (value, ctx) => {
+                            const pct = ptTotal > 0 ? Math.round((value / ptTotal) * 100) : 0;
+                            return `${pct}%\n(${value})`;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // =========================
+    // Agent SLA Performance Table
+    // =========================
+    const agentSlaData = {};
+    filteredData.forEach(t => {
+        const agent = t.ticket_handler_agent_name;
+        if (!agent) return;
+        if (!agentSlaData[agent]) {
+            agentSlaData[agent] = { total: 0, met: 0, missed: 0 };
+        }
+        agentSlaData[agent].total++;
+        if (t.sla === 'Met') agentSlaData[agent].met++;
+        if (t.sla === 'Missed') agentSlaData[agent].missed++;
+    });
+
+    // Sort by total descending
+    const sortedAgents = Object.keys(agentSlaData)
+        .sort((a, b) => agentSlaData[b].total - agentSlaData[a].total)
+        .slice(0, 20); // Top 20 agents
+
+    if (elements.agentSlaBody) {
+        elements.agentSlaBody.innerHTML = sortedAgents.map(agent => {
+            const d = agentSlaData[agent];
+            const slaTotal = d.met + d.missed;
+            const slaPct = slaTotal > 0 ? Math.round((d.met / slaTotal) * 100) : 0;
+            const slaClass = slaPct >= 90 ? 'sla-good' : (slaPct >= 70 ? 'sla-warning' : 'sla-poor');
+            return `<tr>
+                <td>${agent}</td>
+                <td>${d.total}</td>
+                <td>${d.met}</td>
+                <td>${d.missed}</td>
+                <td class="${slaClass}">${slaPct}%</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // =========================
+    // Show N/A Note if there are N/A tickets
+    // =========================
+    const naSlaCount = filteredData.filter(t => t.sla === 'N/A').length;
+    if (elements.slaNaNote) {
+        elements.slaNaNote.style.display = naSlaCount > 0 ? 'block' : 'none';
+    }
 }
 
 // ============================================

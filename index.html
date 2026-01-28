@@ -102,14 +102,14 @@
                 <div class="metric-icon">✓</div>
                 <div class="metric-content">
                     <span class="metric-value" id="slaMet">-</span>
-                    <span class="metric-label">SLA Met</span>
+                    <span class="metric-label">SLA Met <span class="metric-count" id="slaMetCount"></span></span>
                 </div>
             </div>
             <div class="metric-card danger">
                 <div class="metric-icon">✗</div>
                 <div class="metric-content">
                     <span class="metric-value" id="slaMissed">-</span>
-                    <span class="metric-label">SLA Missed</span>
+                    <span class="metric-label">SLA Missed <span class="metric-count" id="slaMissedCount"></span></span>
                 </div>
             </div>
             <div class="metric-card info">
@@ -133,7 +133,14 @@
             </div>
             <div class="chart-card">
                 <h3>SLA Performance</h3>
-                <canvas id="slaChart"></canvas>
+                <div id="slaChartContainer">
+                    <canvas id="slaChart"></canvas>
+                </div>
+                <div class="chart-legend-note" id="slaNaNote" style="display: none;">
+                    <span class="legend-tooltip"
+                        title="Tickets escalated to different teams - SLA not applicable for forwarded tickets">ℹ️ N/A =
+                        Forwarded tickets (hover for details)</span>
+                </div>
             </div>
             <div class="chart-card">
                 <div class="chart-header">
@@ -141,6 +148,30 @@
                     <button class="btn-link" id="seeAllHandlers">See All Handlers →</button>
                 </div>
                 <canvas id="handlerChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Product Type Distribution</h3>
+                <canvas id="productTypeChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Agent SLA Performance</h3>
+                </div>
+                <div class="agent-sla-table-container" id="agentSlaContainer">
+                    <table class="agent-sla-table" id="agentSlaTable">
+                        <thead>
+                            <tr>
+                                <th>Agent</th>
+                                <th>Total</th>
+                                <th>Met</th>
+                                <th>Missed</th>
+                                <th>SLA %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agentSlaBody">
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <div class="chart-card chart-wide">
                 <h3>Team SLA Performance & Avg Resolution Time</h3>
