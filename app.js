@@ -419,6 +419,10 @@ function initCharts() {
     // Register the datalabels plugin
     Chart.register(ChartDataLabels);
 
+    // Global defaults for dark theme
+    Chart.defaults.color = '#ffffff';
+    Chart.defaults.plugins.legend.labels.color = '#ffffff';
+
     // Daily Chart - shows values on top of bars (inside if >90% of max)
     dailyChart = new Chart(document.getElementById('dailyChart'), {
         type: 'bar',
@@ -427,7 +431,7 @@ function initCharts() {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { labels: { color: '#a0a0b0' } },
+                legend: { labels: { color: '#ffffff' } },
                 datalabels: {
                     color: '#ffffff',
                     anchor: (context) => {
@@ -515,7 +519,7 @@ function initCharts() {
         options: {
             responsive: true,
             plugins: {
-                legend: { position: 'bottom', labels: { color: '#a0a0b0' } },
+                legend: { position: 'bottom', labels: { color: '#ffffff' } },
                 tooltip: {
                     callbacks: {
                         label: (ctx) => `${ctx.label}: ${ctx.raw} tickets`
@@ -585,7 +589,7 @@ function initCharts() {
             responsive: true,
             maintainAspectRatio: true,
             plugins: {
-                legend: { labels: { color: '#a0a0b0' } },
+                legend: { labels: { color: '#ffffff' } },
                 datalabels: {
                     color: '#ffffff',
                     anchor: (context) => {
@@ -637,14 +641,45 @@ function initCharts() {
 }
 
 function updateCharts() {
-    // Daily volume
+    // Daily volume - shows last 30 days, ignores dashboard date filter
     const dailyData = {};
-    filteredData.forEach(t => {
-        if (t.date) {
-            dailyData[t.date] = (dailyData[t.date] || 0) + 1;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    // Filter allData by everything EXCEPT date constraints, then restrict to last 30 days
+    const agent = elements.agentFilter.value;
+    const team = elements.teamFilter.value;
+    const sla = elements.slaFilter.value;
+    const search = elements.searchInput.value.toLowerCase();
+
+    allData.forEach(t => {
+        if (!t.date) return;
+        const ticketDate = new Date(t.date);
+        if (ticketDate < thirtyDaysAgo) return;
+
+        // Apply other filters
+        if (agent && t.ticket_handler_agent_name !== agent) return;
+        if (team && t.current_team !== team) return;
+        if (sla && t.sla !== sla) return;
+        if (search) {
+            const searchFields = [t.ticket_id, t.description_last_ticket_note, t.issue_category].join(' ').toLowerCase();
+            if (!searchFields.includes(search)) return;
         }
+
+        dailyData[t.date] = (dailyData[t.date] || 0) + 1;
     });
-    const sortedDates = Object.keys(dailyData).sort();
+
+    // Fill in missing dates for the last 30 days
+    const sortedDates = [];
+    const d = new Date(thirtyDaysAgo);
+    while (d <= new Date()) {
+        const dateStr = d.toISOString().split('T')[0];
+        sortedDates.push(dateStr);
+        if (!dailyData[dateStr]) dailyData[dateStr] = 0;
+        d.setDate(d.getDate() + 1);
+    }
+
     dailyChart.data.labels = sortedDates;
     dailyChart.data.datasets = [{
         label: 'Tickets',
@@ -832,7 +867,7 @@ function updateCharts() {
                 plugins: {
                     legend: {
                         position: 'right',
-                        labels: { color: '#e0e0e0', padding: 15 }
+                        labels: { color: '#ffffff', padding: 15 }
                     },
                     datalabels: {
                         color: '#ffffff',

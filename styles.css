@@ -829,8 +829,9 @@ td:last-child {
     color: var(--text-primary);
 }
 
-/* Compact Agent SLA Table - 20% reduced spacing (Original: 10px 12px) */
+/* Compact Agent SLA Table - Substantially reduced spacing */
 .agent-sla-table.agent-sla-compact th,
 .agent-sla-table.agent-sla-compact td {
-    padding: 8px 9.5px;
+    padding: 4px 6px;
+    line-height: 1.2;
 }
