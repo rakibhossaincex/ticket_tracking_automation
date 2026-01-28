@@ -832,10 +832,17 @@ td:last-child {
 /* Compact Agent SLA Table - Substantially reduced spacing & larger font */
 .agent-sla-table.agent-sla-compact {
     font-size: 1.1rem;
+    width: auto !important;
+    /* Prevent table from stretching across the card */
+    min-width: 0 !important;
 }
 
 .agent-sla-table.agent-sla-compact th,
 .agent-sla-table.agent-sla-compact td {
-    padding: 4px 3px;
-    line-height: 1.2;
+    padding: 2px 1px !important;
+    /* Extremely tight horizontal spacing */
+    line-height: 1.1;
 }
+
+/* Add a bit of gap between the columns using a more surgical approach if needed,
+   but for now, 1px horizontal padding is as tight as possible. */
