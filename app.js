@@ -21,6 +21,10 @@ let pageSize = 25;
 let sortColumn = 'date';
 let sortDirection = 'desc';
 
+// Multi-select states
+const selectedAgents = new Set();
+const selectedTeams = new Set();
+
 // Charts
 let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart;
 
@@ -197,7 +201,7 @@ function populateFilters() {
 function initSearchableDropdown(type, options, placeholder) {
     const searchInput = document.getElementById(`${type}Search`);
     const optionsContainer = document.getElementById(`${type}Options`);
-    const hiddenInput = document.getElementById(`${type}Filter`);
+    const selectionSet = type === 'agent' ? selectedAgents : selectedTeams;
 
     // Render all options
     function renderOptions(filter = '') {
@@ -205,20 +209,49 @@ function initSearchableDropdown(type, options, placeholder) {
             ? options.filter(o => o.toLowerCase().includes(filter.toLowerCase()))
             : options;
 
-        let html = `<div class="dropdown-option ${hiddenInput.value === '' ? 'selected' : ''}" data-value="">${placeholder}</div>`;
+        let html = `<div class="dropdown-option ${selectionSet.size === 0 ? 'selected' : ''}" data-value="">${placeholder}</div>`;
         html += filtered.map(o =>
-            `<div class="dropdown-option ${hiddenInput.value === o ? 'selected' : ''}" data-value="${o}">${o}</div>`
+            `<div class="dropdown-option ${selectionSet.has(o) ? 'selected' : ''}" data-value="${o}">
+                <span class="checkbox-ui">${selectionSet.has(o) ? '✓' : ''}</span>
+                ${o}
+            </div>`
         ).join('');
 
         optionsContainer.innerHTML = html;
 
         // Add click handlers
         optionsContainer.querySelectorAll('.dropdown-option').forEach(opt => {
-            opt.addEventListener('click', () => {
-                hiddenInput.value = opt.dataset.value;
-                searchInput.value = opt.dataset.value || '';
-                searchInput.placeholder = opt.dataset.value || placeholder;
-                optionsContainer.classList.remove('active');
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const val = opt.dataset.value;
+
+                if (!val) {
+                    // Reset selection if "All" is clicked
+                    selectionSet.clear();
+                    searchInput.value = '';
+                    searchInput.placeholder = placeholder;
+                } else {
+                    // Toggle selection
+                    if (selectionSet.has(val)) {
+                        selectionSet.delete(val);
+                    } else {
+                        selectionSet.add(val);
+                    }
+
+                    // Update display
+                    if (selectionSet.size === 0) {
+                        searchInput.placeholder = placeholder;
+                        searchInput.value = '';
+                    } else if (selectionSet.size === 1) {
+                        searchInput.placeholder = [...selectionSet][0];
+                        searchInput.value = '';
+                    } else {
+                        searchInput.placeholder = `${selectionSet.size} Selected`;
+                        searchInput.value = '';
+                    }
+                }
+
+                renderOptions(searchInput.value);
                 applyFilters();
             });
         });
@@ -230,7 +263,8 @@ function initSearchableDropdown(type, options, placeholder) {
         optionsContainer.classList.add('active');
     });
 
-    searchInput.addEventListener('click', () => {
+    searchInput.addEventListener('click', (e) => {
+        e.stopPropagation();
         renderOptions(searchInput.value);
         optionsContainer.classList.add('active');
     });
@@ -245,6 +279,7 @@ function initSearchableDropdown(type, options, placeholder) {
     document.addEventListener('click', (e) => {
         if (!e.target.closest(`#${type}Dropdown`)) {
             optionsContainer.classList.remove('active');
+            searchInput.value = ''; // Clear search text but keep selection
         }
     });
 
@@ -258,8 +293,6 @@ function initSearchableDropdown(type, options, placeholder) {
 
 function applyFilters() {
     const dateRange = datePicker.selectedDates;
-    const agent = elements.agentFilter.value;
-    const team = elements.teamFilter.value;
     const sla = elements.slaFilter.value;
     const search = elements.searchInput.value.toLowerCase();
 
@@ -270,11 +303,11 @@ function applyFilters() {
             if (ticketDate < dateRange[0] || ticketDate > dateRange[1]) return false;
         }
 
-        // Agent filter
-        if (agent && ticket.ticket_handler_agent_name !== agent) return false;
+        // Agent filter (Multi-select)
+        if (selectedAgents.size > 0 && !selectedAgents.has(ticket.ticket_handler_agent_name)) return false;
 
-        // Team filter
-        if (team && ticket.current_team !== team) return false;
+        // Team filter (Multi-select)
+        if (selectedTeams.size > 0 && !selectedTeams.has(ticket.current_team)) return false;
 
         // SLA filter
         if (sla && ticket.sla !== sla) return false;
@@ -298,22 +331,22 @@ function applyFilters() {
 
 function resetFilters() {
     datePicker.clear();
-    elements.agentFilter.value = '';
-    elements.teamFilter.value = '';
+    selectedAgents.clear();
+    selectedTeams.clear();
+    const agentSearch = document.getElementById('agentSearch');
+    const teamSearch = document.getElementById('teamSearch');
+    if (agentSearch) {
+        agentSearch.value = '';
+        agentSearch.placeholder = 'Search agents...';
+    }
+    if (teamSearch) {
+        teamSearch.value = '';
+        teamSearch.placeholder = 'Search teams...';
+    }
     elements.slaFilter.value = '';
     elements.searchInput.value = '';
-
-    // Clear searchable dropdown inputs
-    document.getElementById('agentSearch').value = '';
-    document.getElementById('agentSearch').placeholder = 'Search agents...';
-    document.getElementById('teamSearch').value = '';
-    document.getElementById('teamSearch').placeholder = 'Search teams...';
-
     document.querySelectorAll('[data-range]').forEach(btn => btn.classList.remove('active'));
-
-    filteredData = [...allData];
-    currentPage = 1;
-    updateDashboard();
+    applyFilters();
 }
 
 function setQuickDateRange(range) {
