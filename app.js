@@ -486,7 +486,9 @@ function initCharts() {
                                         text: `${label} (${value})`,
                                         fillStyle: data.datasets[0].backgroundColor[i],
                                         hidden: false,
-                                        index: i
+                                        index: i,
+                                        fontColor: '#ffffff',
+                                        strokeStyle: '#ffffff'
                                     };
                                 });
                             }
@@ -647,7 +649,6 @@ function updateCharts() {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
     thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-    // Filter allData by everything EXCEPT date constraints, then restrict to last 30 days
     const agent = elements.agentFilter.value;
     const team = elements.teamFilter.value;
     const sla = elements.slaFilter.value;
@@ -670,15 +671,8 @@ function updateCharts() {
         dailyData[t.date] = (dailyData[t.date] || 0) + 1;
     });
 
-    // Fill in missing dates for the last 30 days
-    const sortedDates = [];
-    const d = new Date(thirtyDaysAgo);
-    while (d <= new Date()) {
-        const dateStr = d.toISOString().split('T')[0];
-        sortedDates.push(dateStr);
-        if (!dailyData[dateStr]) dailyData[dateStr] = 0;
-        d.setDate(d.getDate() + 1);
-    }
+    // Sort available dates that have data
+    const sortedDates = Object.keys(dailyData).sort();
 
     dailyChart.data.labels = sortedDates;
     dailyChart.data.datasets = [{
