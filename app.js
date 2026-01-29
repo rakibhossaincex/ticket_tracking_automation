@@ -301,9 +301,15 @@ function applyFilters() {
 
     filteredData = allData.filter(ticket => {
         // Date filter
-        if (dateRange.length === 2) {
+        if (dateRange.length >= 1) {
             const ticketDate = new Date(ticket.date);
-            if (ticketDate < dateRange[0] || ticketDate > dateRange[1]) return false;
+            const start = dateRange[0];
+            const end = dateRange[1] || dateRange[0];
+            // Normalize all to midnight local for comparison
+            ticketDate.setHours(0, 0, 0, 0);
+            start.setHours(0, 0, 0, 0);
+            end.setHours(0, 0, 0, 0);
+            if (ticketDate < start || ticketDate > end) return false;
         }
 
         // Agent filter (Multi-select)
@@ -470,15 +476,10 @@ function initCharts() {
                 legend: { labels: { color: '#ffffff' } },
                 datalabels: {
                     color: '#ffffff',
-                    anchor: (context) => {
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        return value / max > 0.9 ? 'end' : 'end';
-                    },
+                    anchor: 'end',
                     align: (context) => {
                         const max = Math.max(...context.dataset.data);
                         const value = context.dataset.data[context.dataIndex];
-                        // If bar is > 90% of max, show inside (bottom align)
                         return value / max > 0.9 ? 'bottom' : 'top';
                     },
                     offset: 4,
@@ -540,10 +541,13 @@ function initCharts() {
                 datalabels: {
                     color: '#ffffff',
                     font: { weight: 'bold', size: 11 },
+                    anchor: 'end',
+                    align: 'end',
+                    offset: 8,
                     formatter: (value, ctx) => {
                         const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
                         const pct = Math.round((value / total) * 100);
-                        return pct > 3 ? pct + '%' : '';
+                        return pct > 0 ? pct + '%' : '';
                     }
                 }
             }
@@ -588,16 +592,10 @@ function initCharts() {
                 legend: { display: false },
                 datalabels: {
                     color: '#ffffff',
-                    anchor: (context) => {
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        // If bar is > 80% of max, anchor at end but inside
-                        return value / max > 0.8 ? 'end' : 'end';
-                    },
+                    anchor: 'end',
                     align: (context) => {
                         const max = Math.max(...context.dataset.data);
                         const value = context.dataset.data[context.dataIndex];
-                        // If bar is > 80% of max, align left (inside bar at end)
                         return value / max > 0.8 ? 'left' : 'right';
                     },
                     offset: 4,
@@ -630,15 +628,10 @@ function initCharts() {
                 legend: { labels: { color: '#ffffff' } },
                 datalabels: {
                     color: '#ffffff',
-                    anchor: (context) => {
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        return value / max > 0.9 ? 'end' : 'end';
-                    },
+                    anchor: 'end',
                     align: (context) => {
                         const max = Math.max(...context.dataset.data);
                         const value = context.dataset.data[context.dataIndex];
-                        // If bar is > 90% of max, show inside (bottom align)
                         return value / max > 0.9 ? 'bottom' : 'top';
                     },
                     offset: 4,
@@ -689,7 +682,11 @@ function initCharts() {
                 datalabels: {
                     color: '#ffffff',
                     anchor: 'end',
-                    align: 'top',
+                    align: (context) => {
+                        const max = Math.max(...context.dataset.data);
+                        const value = context.dataset.data[context.dataIndex];
+                        return value / max > 0.9 ? 'bottom' : 'top';
+                    },
                     offset: 4,
                     font: { weight: 'bold', size: 10 },
                     formatter: (value) => value > 0 ? value + 'm' : ''
@@ -713,32 +710,12 @@ function initCharts() {
 }
 
 function updateCharts() {
-    // Daily volume - shows last 30 days, ignores dashboard date filter
+    // Daily volume - respects dashboard date filter
     const dailyData = {};
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
-    thirtyDaysAgo.setHours(0, 0, 0, 0);
-
-    const agent = elements.agentFilter.value;
-    const team = elements.teamFilter.value;
-    const sla = elements.slaFilter.value;
-    const search = elements.searchInput.value.toLowerCase();
-
-    allData.forEach(t => {
-        if (!t.date) return;
-        const ticketDate = new Date(t.date);
-        if (ticketDate < thirtyDaysAgo) return;
-
-        // Apply other filters
-        if (agent && t.ticket_handler_agent_name !== agent) return;
-        if (team && t.current_team !== team) return;
-        if (sla && t.sla !== sla) return;
-        if (search) {
-            const searchFields = [t.ticket_id, t.description_last_ticket_note, t.issue_category].join(' ').toLowerCase();
-            if (!searchFields.includes(search)) return;
+    filteredData.forEach(t => {
+        if (t.date) {
+            dailyData[t.date] = (dailyData[t.date] || 0) + 1;
         }
-
-        dailyData[t.date] = (dailyData[t.date] || 0) + 1;
     });
 
     // Sort available dates that have data
@@ -752,6 +729,15 @@ function updateCharts() {
         borderColor: 'rgba(99, 102, 241, 1)',
         borderWidth: 1
     }];
+
+    // Fix Daily Chart labels to avoid cropping
+    dailyChart.options.plugins.datalabels.align = (context) => {
+        const max = Math.max(...context.dataset.data);
+        const value = context.dataset.data[context.dataIndex];
+        return value / max > 0.9 ? 'bottom' : 'top';
+    };
+    dailyChart.options.plugins.datalabels.anchor = 'end';
+
     dailyChart.update();
 
     // Team distribution
@@ -1084,7 +1070,11 @@ function updateCharts() {
                     datalabels: {
                         color: '#ffffff',
                         anchor: 'end',
-                        align: 'right',
+                        align: (context) => {
+                            const max = Math.max(...context.dataset.data);
+                            const value = context.dataset.data[context.dataIndex];
+                            return value / max > 0.9 ? 'left' : 'right';
+                        },
                         font: { weight: 'bold', size: 11 },
                         formatter: (value) => value
                     }
