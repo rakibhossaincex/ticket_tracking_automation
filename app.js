@@ -508,6 +508,9 @@ function initCharts() {
         data: { labels: [], datasets: [] },
         options: {
             responsive: true,
+            layout: {
+                padding: 25 // Added padding to prevent outside labels from being cropped
+            },
             plugins: {
                 legend: {
                     position: 'right',
@@ -541,9 +544,20 @@ function initCharts() {
                 datalabels: {
                     color: '#ffffff',
                     font: { weight: 'bold', size: 11 },
-                    anchor: 'end',
-                    align: 'end',
-                    offset: 8,
+                    // Only move outside if percentage is < 4%
+                    anchor: (ctx) => {
+                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                        const value = ctx.dataset.data[ctx.dataIndex];
+                        const pct = (value / total) * 100;
+                        return pct < 4 ? 'end' : 'center';
+                    },
+                    align: (ctx) => {
+                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                        const value = ctx.dataset.data[ctx.dataIndex];
+                        const pct = (value / total) * 100;
+                        return pct < 4 ? 'end' : 'center';
+                    },
+                    offset: 10,
                     formatter: (value, ctx) => {
                         const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
                         const pct = Math.round((value / total) * 100);
@@ -560,6 +574,9 @@ function initCharts() {
         data: { labels: [], datasets: [] },
         options: {
             responsive: true,
+            layout: {
+                padding: 20 // Added padding to prevent outside labels from being cropped
+            },
             plugins: {
                 legend: { position: 'bottom', labels: { color: '#ffffff' } },
                 tooltip: {
@@ -570,6 +587,20 @@ function initCharts() {
                 datalabels: {
                     color: '#ffffff',
                     font: { weight: 'bold', size: 12 },
+                    // Move outside ONLY if < 4%
+                    anchor: (ctx) => {
+                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                        const value = ctx.dataset.data[ctx.dataIndex];
+                        const pct = (value / total) * 100;
+                        return pct < 4 ? 'end' : 'center';
+                    },
+                    align: (ctx) => {
+                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                        const value = ctx.dataset.data[ctx.dataIndex];
+                        const pct = (value / total) * 100;
+                        return pct < 4 ? 'end' : 'center';
+                    },
+                    offset: 8,
                     formatter: (value, ctx) => {
                         const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
                         const pct = Math.round((value / total) * 100);
@@ -949,6 +980,9 @@ function updateCharts() {
                 responsive: true,
                 maintainAspectRatio: false,
                 cutout: '50%',
+                layout: {
+                    padding: 20 // Added padding to prevent outside labels from being cropped
+                },
                 plugins: {
                     legend: {
                         position: 'right',
@@ -957,6 +991,20 @@ function updateCharts() {
                     datalabels: {
                         color: '#ffffff',
                         font: { weight: 'bold', size: 12 },
+                        // Move outside ONLY if < 4%
+                        anchor: (ctx) => {
+                            const total = ptData.reduce((a, b) => a + b, 0);
+                            const value = ctx.dataset.data[ctx.dataIndex];
+                            const pct = total > 0 ? (value / total) * 100 : 0;
+                            return pct < 4 ? 'end' : 'center';
+                        },
+                        align: (ctx) => {
+                            const total = ptData.reduce((a, b) => a + b, 0);
+                            const value = ctx.dataset.data[ctx.dataIndex];
+                            const pct = total > 0 ? (value / total) * 100 : 0;
+                            return pct < 4 ? 'end' : 'center';
+                        },
+                        offset: 8,
                         formatter: (value, ctx) => {
                             const pct = ptTotal > 0 ? Math.round((value / ptTotal) * 100) : 0;
                             return `${pct}%\n(${value})`;
