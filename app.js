@@ -25,6 +25,30 @@ let sortDirection = 'desc';
 const selectedAgents = new Set();
 const selectedTeams = new Set();
 
+// GLOBAL FILTERS (Single source of truth)
+const filters = {
+    from: null,   // ISO string (start of day)
+    to: null,     // ISO string (end of day)
+    agents: selectedAgents,
+    teams: selectedTeams,
+    sla: '',
+    search: ''
+};
+
+// HELPER: Convert YYYY-MM-DD to ISO Start of Day
+function toISOStart(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toISOString();
+}
+
+// HELPER: Convert YYYY-MM-DD to ISO End of Day
+function toISOEnd(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + 'T23:59:59.999');
+    return d.toISOString();
+}
+
 // Helper to format date as YYYY-MM-DD in local time
 function formatDateLocal(date) {
     const d = new Date(date);
@@ -117,7 +141,8 @@ async function init() {
     document.getElementById('seeAllCategories').addEventListener('click', showAllCategoriesModal);
 
     // Load data
-    await loadData();
+    // Triggered by setQuickDateRange in initCustomDatePicker
+    // await loadData(); 
 }
 
 // ============================================
@@ -126,74 +151,109 @@ async function init() {
 
 async function loadData() {
     elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">Loading data...</td></tr>';
-    console.log('🔄 Loading data from Supabase...');
+
+    // Column used: created_at (Type: timestamp with time zone)
+    console.log('[Fetch] starting with filters', JSON.stringify({
+        from: filters.from,
+        to: filters.to,
+        agents: Array.from(filters.agents),
+        teams: Array.from(filters.teams),
+        sla: filters.sla,
+        search: filters.search
+    }));
 
     try {
-        // Fetch all data with pagination (Supabase default limit is 1000)
         let allRecords = [];
         let page = 0;
-        const pageSize = 1000;
+        const queryPageSize = 1000;
         let hasMore = true;
 
         while (hasMore) {
-            const from = page * pageSize;
-            const to = from + pageSize - 1;
+            const fromIdx = page * queryPageSize;
+            const toIdx = fromIdx + queryPageSize - 1;
 
-            const { data, error } = await supabaseClient
+            let query = supabaseClient
                 .from('ticket_logs')
                 .select('*')
-                .order('date', { ascending: false })
-                .range(from, to);
+                .order('created_at', { ascending: false })
+                .range(fromIdx, toIdx);
 
-            if (error) {
-                console.error('❌ Supabase error:', error);
-                throw error;
+            // Apply Server-Side Filters
+            if (filters.from) query = query.gte('created_at', filters.from);
+            if (filters.to) query = query.lte('created_at', filters.to);
+
+            if (filters.agents.size > 0) {
+                query = query.in('ticket_handler_agent_name', Array.from(filters.agents));
+            }
+            if (filters.teams.size > 0) {
+                query = query.in('current_team', Array.from(filters.teams));
+            }
+            if (filters.sla) {
+                query = query.eq('sla', filters.sla);
             }
 
-            if (data && data.length > 0) {
-                allRecords = allRecords.concat(data);
-                console.log(`📊 Page ${page + 1}: fetched ${data.length} records (total: ${allRecords.length})`);
-                page++;
-                hasMore = data.length === pageSize;
-            } else {
-                hasMore = false;
-            }
+            const { data, error } = await query;
+
+            if (error) throw error;
+
+            allRecords = allRecords.concat(data);
+            hasMore = data.length === queryPageSize;
+            page++;
         }
 
-        console.log(`✅ Loaded ${allRecords.length} total tickets`);
+        console.log('[Fetch] got rows:', allRecords.length);
 
         if (allRecords.length === 0) {
-            console.warn('⚠️ No data returned from Supabase');
             elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">No tickets found in database.</td></tr>';
+            allData = [];
+            filteredData = [];
+            updateDashboard();
             return;
         }
 
         allData = allRecords;
-        filteredData = [...allData];
 
-        // Populate filter dropdowns
+        // Final Client-Side Search (since fuzzy/keyword search is easier locally for small-ish sets)
+        if (filters.search) {
+            filteredData = allData.filter(ticket => {
+                const searchFields = [
+                    ticket.ticket_id,
+                    ticket.description_last_ticket_note,
+                    ticket.issue_category
+                ].join(' ').toLowerCase();
+                return searchFields.includes(filters.search.toLowerCase());
+            });
+        } else {
+            filteredData = [...allData];
+        }
+
+        // Populate filter options (agents/teams) only on first real load or if empty
+        // In a real server-side only app, these would come from separate queries
+        // But for this dashboard, we derive them from the current result set
         populateFilters();
 
-        // Apply any existing filters
-        applyFilters();
-
-        // Update last updated time (Note: Removed per user request)
-        // elements.lastUpdated.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+        updateDashboard();
 
     } catch (error) {
-        console.error('❌ Error loading data:', error);
+        console.error('[Fetch] supabase error', error);
         elements.tableBody.innerHTML = `<tr><td colspan="8" class="loading">Error: ${error.message}</td></tr>`;
     }
 }
 
+let filtersInitialized = false;
+
 function populateFilters() {
-    // Get unique agents and teams
+    if (filtersInitialized) return;
+
+    // Get unique agents and teams from master set (initial load)
     const agents = [...new Set(allData.map(t => t.ticket_handler_agent_name).filter(Boolean))].sort();
     const teams = [...new Set(allData.map(t => t.current_team).filter(Boolean))].sort();
 
-    // Initialize searchable dropdowns
-    initSearchableDropdown('agent', agents, 'All Agents');
-    initSearchableDropdown('team', teams, 'All Teams');
+    if (agents.length > 0 || teams.length > 0) {
+        initSearchableDropdown('agent', agents, 'All Agents');
+        initSearchableDropdown('team', teams, 'All Teams');
+        filtersInitialized = true;
+    }
 }
 
 function initSearchableDropdown(type, options, placeholder) {
@@ -290,62 +350,20 @@ function initSearchableDropdown(type, options, placeholder) {
 // ============================================
 
 function applyFilters() {
-    const rawDates = elements.dateRange.value;
-
-    // Split and parse dates. Ensure we treat input strings as local YYYY-MM-DD
-    const dateRange = rawDates ? rawDates.split(' to ').map(d => {
-        const parts = d.split('-').map(Number);
-        // new Date(year, monthIndex, day) uses local time
-        return new Date(parts[0], parts[1] - 1, parts[2]);
-    }) : [];
-
-    const sla = elements.slaFilter.value;
-    const search = elements.searchInput.value.toLowerCase();
-
-    filteredData = allData.filter(ticket => {
-        // Date filter - Compare using local time boundaries
-        if (dateRange.length >= 1) {
-            // ticket.date is usually YYYY-MM-DD from Supabase
-            const tParts = ticket.date.split('T')[0].split('-').map(Number);
-            const ticketDate = new Date(tParts[0], tParts[1] - 1, tParts[2]);
-
-            const start = dateRange[0];
-            const end = dateRange[1] || dateRange[0];
-
-            if (ticketDate < start || ticketDate > end) return false;
-        }
-
-        // Agent filter (Multi-select)
-        if (selectedAgents.size > 0 && !selectedAgents.has(ticket.ticket_handler_agent_name)) return false;
-
-        // Team filter (Multi-select)
-        if (selectedTeams.size > 0 && !selectedTeams.has(ticket.current_team)) return false;
-
-        // SLA filter
-        if (sla && ticket.sla !== sla) return false;
-
-        // Search filter
-        if (search) {
-            const searchFields = [
-                ticket.ticket_id,
-                ticket.description_last_ticket_note,
-                ticket.issue_category
-            ].join(' ').toLowerCase();
-            if (!searchFields.includes(search)) return false;
-        }
-
-        return true;
-    });
+    // Sync UI to global filter state
+    filters.sla = elements.slaFilter.value;
+    filters.search = elements.searchInput.value;
 
     currentPage = 1;
-    updateDashboard();
+    loadData();
 }
 
 function resetFilters() {
-    // Reset date picker to default (Last 30 Days)
-    setQuickDateRange('30days');
-    selectedAgents.clear();
-    selectedTeams.clear();
+    // Reset selection sets
+    filters.agents.clear();
+    filters.teams.clear();
+
+    // Reset DOM inputs
     const agentSearch = document.getElementById('agentSearch');
     const teamSearch = document.getElementById('teamSearch');
     if (agentSearch) {
@@ -358,8 +376,9 @@ function resetFilters() {
     }
     elements.slaFilter.value = '';
     elements.searchInput.value = '';
-    document.querySelectorAll('[data-range]').forEach(btn => btn.classList.remove('active'));
-    applyFilters();
+
+    // Reset date picker to default (Last 30 Days)
+    setQuickDateRange('30days');
 }
 
 function setQuickDateRange(range) {
@@ -400,19 +419,24 @@ function setQuickDateRange(range) {
     if (range !== 'custom') {
         const startStr = formatDateLocal(start);
         const endStr = formatDateLocal(today);
+
+        // Commit to global filters using ISO boundaries
+        filters.from = toISOStart(startStr);
+        filters.to = toISOEnd(endStr);
+
         elements.dateRange.value = startStr === endStr ? startStr : `${startStr} to ${endStr}`;
         elements.dateRangeText.textContent = label;
 
         // Update custom fields for consistency
-        elements.customFrom._flatpickr.setDate(start);
-        elements.customTo._flatpickr.setDate(today);
+        if (elements.customFrom._flatpickr) elements.customFrom._flatpickr.setDate(start);
+        if (elements.customTo._flatpickr) elements.customTo._flatpickr.setDate(today);
 
         // Update active class in sidebar
         document.querySelectorAll('.picker-opt').forEach(opt => {
             opt.classList.toggle('active', opt.dataset.range === range);
         });
 
-        applyFilters();
+        loadData();
     }
 }
 
@@ -427,6 +451,32 @@ function initCustomDatePicker() {
     document.addEventListener('click', (e) => {
         if (!e.target.closest('#datePickerCustom')) {
             elements.datePickerDropdown.classList.remove('active');
+        }
+
+        // Event delegation for Apply button
+        if (e.target.closest('#applyDates')) {
+            const fromDate = elements.customFrom.value;
+            const toDate = elements.customTo.value;
+            console.log('[DateFilter] apply clicked');
+
+            if (fromDate && toDate) {
+                // Commit to global filters using ISO boundaries
+                filters.from = toISOStart(fromDate);
+                filters.to = toISOEnd(toDate);
+                console.log('[DateFilter] committed', filters.from, filters.to);
+                console.log('[DateFilter] range', { from: filters.from, to: filters.to });
+
+                elements.dateRange.value = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
+                elements.dateRangeText.textContent = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
+
+                // Mark "Custom" as active
+                document.querySelectorAll('.picker-opt').forEach(opt => {
+                    opt.classList.toggle('active', opt.dataset.range === 'custom');
+                });
+
+                loadData();
+                elements.datePickerDropdown.classList.remove('active');
+            }
         }
     });
 
@@ -452,25 +502,6 @@ function initCustomDatePicker() {
     const toPicker = flatpickr(elements.customTo, {
         dateFormat: 'Y-m-d',
         theme: 'dark'
-    });
-
-    // Apply button
-    elements.applyDates.addEventListener('click', () => {
-        const fromDate = elements.customFrom.value;
-        const toDate = elements.customTo.value;
-
-        if (fromDate && toDate) {
-            elements.dateRange.value = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
-            elements.dateRangeText.textContent = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
-
-            // If they picked a custom range, mark "Custom" as active
-            document.querySelectorAll('.picker-opt').forEach(opt => {
-                opt.classList.toggle('active', opt.dataset.range === 'custom');
-            });
-
-            applyFilters();
-            elements.datePickerDropdown.classList.remove('active');
-        }
     });
 
     // Cancel button
