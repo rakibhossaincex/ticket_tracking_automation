@@ -25,6 +25,15 @@ let sortDirection = 'desc';
 const selectedAgents = new Set();
 const selectedTeams = new Set();
 
+// Helper to format date as YYYY-MM-DD in local time
+function formatDateLocal(date) {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 // Charts
 let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart, categoryChart;
 
@@ -282,20 +291,27 @@ function initSearchableDropdown(type, options, placeholder) {
 
 function applyFilters() {
     const rawDates = elements.dateRange.value;
-    const dateRange = rawDates ? rawDates.split(' to ').map(d => new Date(d)) : [];
+
+    // Split and parse dates. Ensure we treat input strings as local YYYY-MM-DD
+    const dateRange = rawDates ? rawDates.split(' to ').map(d => {
+        const parts = d.split('-').map(Number);
+        // new Date(year, monthIndex, day) uses local time
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }) : [];
+
     const sla = elements.slaFilter.value;
     const search = elements.searchInput.value.toLowerCase();
 
     filteredData = allData.filter(ticket => {
-        // Date filter
+        // Date filter - Compare using local time boundaries
         if (dateRange.length >= 1) {
-            const ticketDate = new Date(ticket.date);
+            // ticket.date is usually YYYY-MM-DD from Supabase
+            const tParts = ticket.date.split('T')[0].split('-').map(Number);
+            const ticketDate = new Date(tParts[0], tParts[1] - 1, tParts[2]);
+
             const start = dateRange[0];
             const end = dateRange[1] || dateRange[0];
-            // Normalize all to midnight local for comparison
-            ticketDate.setHours(0, 0, 0, 0);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(0, 0, 0, 0);
+
             if (ticketDate < start || ticketDate > end) return false;
         }
 
@@ -382,8 +398,8 @@ function setQuickDateRange(range) {
     }
 
     if (range !== 'custom') {
-        const startStr = start.toISOString().split('T')[0];
-        const endStr = today.toISOString().split('T')[0];
+        const startStr = formatDateLocal(start);
+        const endStr = formatDateLocal(today);
         elements.dateRange.value = startStr === endStr ? startStr : `${startStr} to ${endStr}`;
         elements.dateRangeText.textContent = label;
 

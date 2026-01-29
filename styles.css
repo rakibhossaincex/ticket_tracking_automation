@@ -178,14 +178,27 @@ body {
 }
 
 .filter-input,
-.filter-select {
-    padding: 10px 14px;
+.filter-select,
+.date-picker-trigger,
+.searchable-dropdown input {
+    height: 42px;
+    padding: 0 14px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     font-size: 0.9rem;
-    min-width: 160px;
+    min-width: 170px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+.filter-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 .filter-input:focus,
@@ -457,15 +470,8 @@ body {
 }
 
 .date-picker-trigger {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    width: 100%;
     cursor: pointer;
-    transition: all 0.2s ease;
     user-select: none;
 }
 
@@ -599,12 +605,6 @@ body {
 
 .searchable-dropdown input {
     width: 100%;
-    padding: 10px 14px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 0.9rem;
     cursor: pointer;
 }
 
