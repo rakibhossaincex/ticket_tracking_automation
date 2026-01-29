@@ -36,15 +36,16 @@
                     <div class="date-picker-custom" id="datePickerCustom">
                         <div class="date-picker-trigger" id="dateRangeTrigger">
                             <span class="calendar-icon">📅</span>
-                            <span id="dateRangeText">Last 30 Days</span>
+                            <span id="dateRangeText">All time</span>
                             <span class="dropdown-arrow">▼</span>
                         </div>
 
                         <div class="date-picker-dropdown" id="datePickerDropdown">
                             <div class="picker-sidebar">
+                                <button class="picker-opt active" data-range="all">All time</button>
                                 <button class="picker-opt" data-range="today">Today</button>
                                 <button class="picker-opt" data-range="yesterday">Yesterday</button>
-                                <button class="picker-opt active" data-range="30days">Last 30 Days</button>
+                                <button class="picker-opt" data-range="30days">Last 30 Days</button>
                                 <button class="picker-opt" data-range="90days">Last 90 Days</button>
                                 <button class="picker-opt" data-range="custom">Custom</button>
                             </div>
@@ -242,7 +243,9 @@
                         <option value="50">50 per page</option>
                         <option value="100">100 per page</option>
                     </select>
-                    <button id="exportCsv" class="btn btn-secondary">📥 Export CSV</button>
+                    <button id="exportCsv" class="btn-export">
+                        <span>📥 Export CSV</span>
+                    </button>
                 </div>
             </div>
             <div class="table-container">

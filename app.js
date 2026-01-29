@@ -389,6 +389,19 @@ function setQuickDateRange(range) {
 
     let label = '';
     switch (range) {
+        case 'all':
+            label = 'All time';
+            filters.from = null;
+            filters.to = null;
+            elements.dateRange.value = '';
+            elements.dateRangeText.textContent = label;
+
+            document.querySelectorAll('.picker-opt').forEach(opt => {
+                opt.classList.toggle('active', opt.dataset.range === 'all');
+            });
+
+            loadData();
+            return;
         case 'today':
             label = 'Today';
             break;
@@ -509,8 +522,8 @@ function initCustomDatePicker() {
         elements.datePickerDropdown.classList.remove('active');
     });
 
-    // Set initial default (Last 30 Days)
-    setQuickDateRange('30days');
+    // Set initial default (All time)
+    setQuickDateRange('all');
 }
 
 // ============================================

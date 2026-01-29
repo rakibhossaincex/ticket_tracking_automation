@@ -155,6 +155,7 @@ body {
     margin-bottom: 24px;
     position: relative;
     z-index: 50;
+    overflow: visible;
 }
 
 .filter-row {
@@ -603,6 +604,15 @@ body {
     border: 1px solid var(--border-color) !important;
 }
 
+.searchable-dropdown {
+    position: relative;
+    width: 100%;
+}
+
+.filter-group.searchable {
+    min-width: 220px;
+}
+
 .searchable-dropdown input {
     width: 100%;
     cursor: pointer;
@@ -696,6 +706,34 @@ body {
     display: flex;
     gap: 12px;
     align-items: center;
+}
+
+.btn-export {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 0 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-primary);
+    height: 42px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+    gap: 8px;
+}
+
+.btn-export:hover {
+    border-color: var(--accent-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+#pageSize {
+    height: 42px;
+    min-width: 150px;
 }
 
 .table-container {
