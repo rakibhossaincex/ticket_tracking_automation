@@ -25,14 +25,211 @@ let sortDirection = 'desc';
 const selectedAgents = new Set();
 const selectedTeams = new Set();
 
+const dropdownRegistry = new Set();
+
+function closeAllDropdowns(exceptEl = null) {
+    dropdownRegistry.forEach(dd => {
+        if (dd !== exceptEl) dd.classList.remove('open');
+    });
+}
+
 // GLOBAL FILTERS (Single source of truth)
 const filters = {
     from: null,   // ISO string (start of day)
     to: null,     // ISO string (end of day)
     agents: selectedAgents,
     teams: selectedTeams,
+    categories: new Set(),
     sla: '',
-    search: ''
+    search: '',
+    durationUnit: 'min' // min, hour, day
+};
+
+const uiUnits = {
+    teamSla: 'min',
+    avgRes: 'min'
+};
+
+// CANONICAL SLA CALCULATION
+function calculateSlaStats(tickets) {
+    let met = 0, missed = 0, na = 0;
+    for (const t of tickets) {
+        if (t.sla === 'Met') met++;
+        else if (t.sla === 'Missed') missed++;
+        else na++;
+    }
+    const total = met + missed + na;
+    const metPct = total ? (met / total) * 100 : 0;
+    return { met, missed, na, total, metPct };
+}
+
+// DURATION FORMATTER
+// DURATION FORMATTER
+function formatDuration(minutes, unit) {
+    const m = Math.max(0, Math.round(minutes || 0));
+    const d = Math.floor(m / 1440);
+    const h = Math.floor((m % 1440) / 60);
+    const mm = m % 60;
+
+    if (unit === 'day') {
+        if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
+        return h > 0 ? `${h}h ${mm}m` : `${mm}m`;
+    }
+    if (unit === 'hour') {
+        const totalH = d * 24 + h;
+        if (totalH > 0) return mm > 0 ? `${totalH}h ${mm}m` : `${totalH}h`;
+        return `${mm}m`;
+    }
+    return `${m}m`;
+}
+
+// TEAM SLA THRESHOLDS (minutes) for Agent Table only
+const TEAM_SLA_MINUTES = {
+    'Pro Solutions Task Force': 60,
+    'Pro Solution Task Force': 60,
+    'Ticket Dependencies': 1440, // 24h
+    'CEx Reversal': 120, // 2h
+    'Tech Team': 1440,
+    'Platform Operations': 1440,
+    'Payments and Treasury': 1440,
+    'Back Office': 1440,
+    'Customer Experience': 240, // 4h
+    'GB Email Communication': 480 // 8h
+};
+
+function getShortTeamName(fullName) {
+    const abbreviations = {
+        'Pro Solutions Task Force': 'PSTF', 'Pro Solution Task Force': 'PSTF',
+        'Ticket Dependencies': 'T Deps', 'CEx Reversal': 'CEx Rev',
+        'Tech Team': 'TT', 'Platform Operations': 'PO',
+        'Payments and Treasury': 'P&T', 'Back Office': 'BO',
+        'Customer Experience': 'CEx', 'GB Email Communication': 'GB Email'
+    };
+    return abbreviations[fullName] || fullName;
+}
+
+function shortenLabel(str, max = 28) {
+    if (!str) return '';
+    return str.length > max ? str.slice(0, max - 1) + '…' : str;
+}
+
+// DOUGHNUT PERCENT CALLOUTS PLUGIN
+const doughnutPercentCallouts = {
+    id: 'doughnutPercentCallouts',
+    afterDatasetsDraw(chart, args, opts) {
+        const { ctx, chartArea } = chart;
+        const di = opts?.datasetIndex ?? 0;
+        const meta = chart.getDatasetMeta(di);
+        const ds = chart.data?.datasets?.[di];
+        if (!meta?.data?.length || !ds?.data?.length) return;
+
+        const values = ds.data.map(v => +v || 0);
+        const total = values.reduce((a, b) => a + b, 0) || 1;
+
+        const minPct = opts?.minPct ?? 1;
+        const pad = opts?.pad ?? 16;
+        const radial = opts?.radial ?? 16;
+        const horiz = opts?.horiz ?? 24;
+        const minGap = opts?.minGap ?? 14;
+        const font = opts?.font ?? '12px Inter, system-ui, Arial';
+
+        const leftItems = [];
+        const rightItems = [];
+
+        meta.data.forEach((arc, i) => {
+            const v = values[i];
+            if (v <= 0) return;
+            const pct = (v / total) * 100;
+            if (pct < minPct) return;
+
+            const angle = (arc.startAngle + arc.endAngle) / 2;
+            const cx = arc.x, cy = arc.y, r = arc.outerRadius;
+            const x0 = cx + Math.cos(angle) * r;
+            const y0 = cy + Math.sin(angle) * r;
+            const x1 = cx + Math.cos(angle) * (r + radial);
+            const y1 = cy + Math.sin(angle) * (r + radial);
+            const isRight = Math.cos(angle) >= 0;
+            const x2 = x1 + (isRight ? horiz : -horiz);
+
+            const item = { x0, y0, x1, y1, x2, y2: y1, isRight, text: `${pct.toFixed(1)}%` };
+            if (isRight) rightItems.push(item);
+            else leftItems.push(item);
+        });
+
+        function resolve(arr) {
+            if (!arr.length) return;
+            arr.sort((a, b) => a.y2 - b.y2);
+            const minY = pad;
+            const maxY = chart.height - pad;
+
+            // Simple stacking
+            for (let i = 0; i < arr.length; i++) {
+                if (i === 0) arr[i].y2 = Math.max(arr[i].y2, minY);
+                else arr[i].y2 = Math.max(arr[i].y2, arr[i - 1].y2 + minGap);
+            }
+            // push back from bottom
+            let overflow = arr[arr.length - 1].y2 - maxY;
+            if (overflow > 0) {
+                for (let i = arr.length - 1; i >= 0; i--) {
+                    arr[i].y2 -= overflow;
+                    if (i < arr.length - 1) {
+                        arr[i].y2 = Math.min(arr[i].y2, arr[i + 1].y2 - minGap);
+                    }
+                }
+            }
+            // re-check top
+            if (arr[0].y2 < minY) {
+                const shift = minY - arr[0].y2;
+                for (let i = 0; i < arr.length; i++) arr[i].y2 += shift;
+            }
+        }
+
+        resolve(leftItems);
+        resolve(rightItems);
+
+        ctx.save();
+        ctx.font = font;
+        ctx.fillStyle = opts?.color ?? '#E6E8FF';
+        ctx.strokeStyle = opts?.lineColor ?? 'rgba(230,232,255,0.5)';
+        ctx.lineWidth = 1;
+        ctx.textBaseline = 'middle';
+
+        [...leftItems, ...rightItems].forEach(item => {
+            ctx.beginPath();
+            ctx.moveTo(item.x0, item.y0);
+            ctx.lineTo(item.x1, item.y1);
+            ctx.lineTo(item.x2, item.y2);
+            ctx.stroke();
+
+            ctx.textAlign = item.isRight ? 'left' : 'right';
+            const xText = item.isRight ? item.x2 + 6 : item.x2 - 6;
+            ctx.fillText(item.text, xText, item.y2);
+        });
+        ctx.restore();
+    }
+};
+
+// GLOBAL CHART OPTIONS HELPERS
+const OUTSIDE_BAR_LABELS = {
+    anchor: 'end',
+    align: 'top',
+    offset: 8,
+    clamp: true,
+    clip: false,
+    color: '#e2e8f0',
+    font: { weight: '600', size: 11 },
+    formatter: (v) => v
+};
+
+const TOP_RIGHT_LEGEND = {
+    position: 'top',
+    align: 'end',
+    labels: {
+        padding: 12,
+        boxWidth: 12,
+        usePointStyle: true,
+        color: '#a0a0b0'
+    }
 };
 
 // HELPER: Convert YYYY-MM-DD to ISO Start of Day
@@ -89,7 +286,8 @@ const elements = {
     pageInfo: document.getElementById('pageInfo'),
     exportCsv: document.getElementById('exportCsv'),
     slaNaNote: document.getElementById('slaNaNote'),
-    agentSlaBody: document.getElementById('agentSlaBody')
+    agentSlaBody: document.getElementById('agentSlaBody'),
+    slaUnitToggle: document.getElementById('slaUnitToggle')
 };
 
 // Initialize Flatpickr
@@ -117,6 +315,35 @@ async function init() {
     elements.nextPage.addEventListener('click', () => changePage(1));
     elements.exportCsv.addEventListener('click', exportToCsv);
 
+    // Team SLA unit toggle
+    if (elements.slaUnitToggle) {
+        elements.slaUnitToggle.querySelectorAll('.unit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                elements.slaUnitToggle.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                uiUnits.teamSla = btn.dataset.unit;
+                updateTeamSlaChartOnly();
+            });
+        });
+    }
+
+    // Avg Res unit toggle
+    const avgResToggle = document.getElementById('avgResUnitToggle');
+    if (avgResToggle) {
+        avgResToggle.querySelectorAll('.unit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                avgResToggle.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                uiUnits.avgRes = btn.dataset.unit;
+                updateAvgResChartOnly();
+            });
+        });
+    }
+
     // Table sorting
     document.querySelectorAll('th[data-sort]').forEach(th => {
         th.addEventListener('click', () => {
@@ -140,6 +367,9 @@ async function init() {
     // See All Categories button
     document.getElementById('seeAllCategories').addEventListener('click', showAllCategoriesModal);
 
+    // Clicking anywhere outside closes everything
+    document.addEventListener('click', () => closeAllDropdowns(null));
+
     // Load data
     // Triggered by setQuickDateRange in initCustomDatePicker
     // await loadData(); 
@@ -158,6 +388,7 @@ async function loadData() {
         to: filters.to,
         agents: Array.from(filters.agents),
         teams: Array.from(filters.teams),
+        categories: Array.from(filters.categories),
         sla: filters.sla,
         search: filters.search
     }));
@@ -187,6 +418,9 @@ async function loadData() {
             }
             if (filters.teams.size > 0) {
                 query = query.in('current_team', Array.from(filters.teams));
+            }
+            if (filters.categories.size > 0) {
+                query = query.in('issue_category', Array.from(filters.categories));
             }
             if (filters.sla) {
                 query = query.eq('sla', filters.sla);
@@ -245,13 +479,15 @@ let filtersInitialized = false;
 function populateFilters() {
     if (filtersInitialized) return;
 
-    // Get unique agents and teams from master set (initial load)
+    // Get unique agents, teams, and categories from master set (initial load)
     const agents = [...new Set(allData.map(t => t.ticket_handler_agent_name).filter(Boolean))].sort();
     const teams = [...new Set(allData.map(t => t.current_team).filter(Boolean))].sort();
+    const categories = [...new Set(allData.map(t => t.issue_category).filter(Boolean))].sort();
 
-    if (agents.length > 0 || teams.length > 0) {
+    if (agents.length > 0 || teams.length > 0 || categories.length > 0) {
         initSearchableDropdown('agent', agents, 'All Agents');
         initSearchableDropdown('team', teams, 'All Teams');
+        initSearchableDropdown('category', categories, 'All Categories');
         filtersInitialized = true;
     }
 }
@@ -259,7 +495,7 @@ function populateFilters() {
 function initSearchableDropdown(type, options, placeholder) {
     const searchInput = document.getElementById(`${type}Search`);
     const optionsContainer = document.getElementById(`${type}Options`);
-    const selectionSet = type === 'agent' ? selectedAgents : selectedTeams;
+    const selectionSet = type === 'agent' ? selectedAgents : (type === 'team' ? selectedTeams : filters.categories);
 
     // Render all options
     function renderOptions(filter = '') {
@@ -315,31 +551,33 @@ function initSearchableDropdown(type, options, placeholder) {
         });
     }
 
+    // Register wrapper
+    const wrapperEl = document.getElementById(`${type}Dropdown`);
+    if (wrapperEl) dropdownRegistry.add(wrapperEl);
+
     // Show dropdown on focus/click
-    searchInput.addEventListener('focus', () => {
+    searchInput.addEventListener('focus', (e) => {
+        e.stopPropagation();
+        closeAllDropdowns(wrapperEl);
         renderOptions(searchInput.value);
-        optionsContainer.classList.add('active');
+        wrapperEl.classList.add('open');
     });
 
     searchInput.addEventListener('click', (e) => {
         e.stopPropagation();
+        closeAllDropdowns(wrapperEl);
         renderOptions(searchInput.value);
-        optionsContainer.classList.add('active');
+        wrapperEl.classList.add('open');
     });
 
     // Filter on input
     searchInput.addEventListener('input', () => {
         renderOptions(searchInput.value);
-        optionsContainer.classList.add('active');
+        wrapperEl.classList.add('open');
     });
 
-    // Close on click outside
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest(`#${type}Dropdown`)) {
-            optionsContainer.classList.remove('active');
-            searchInput.value = ''; // Clear search text but keep selection
-        }
-    });
+    // Clicking inside dropdown shouldn’t bubble and close it
+    optionsContainer.addEventListener('click', (e) => e.stopPropagation());
 
     // Initial render
     renderOptions();
@@ -362,24 +600,32 @@ function resetFilters() {
     // Reset selection sets
     filters.agents.clear();
     filters.teams.clear();
+    filters.categories.clear();
 
     // Reset DOM inputs
-    const agentSearch = document.getElementById('agentSearch');
-    const teamSearch = document.getElementById('teamSearch');
-    if (agentSearch) {
-        agentSearch.value = '';
-        agentSearch.placeholder = 'Search agents...';
-    }
-    if (teamSearch) {
-        teamSearch.value = '';
-        teamSearch.placeholder = 'Search teams...';
-    }
+    ['agent', 'team', 'category'].forEach(type => {
+        const input = document.getElementById(`${type}Search`);
+        if (input) {
+            input.value = '';
+            input.placeholder = `Search ${type === 'agent' ? 'agents' : type + 's'}...`;
+        }
+    });
+
     elements.slaFilter.value = '';
     elements.searchInput.value = '';
 
-    // Reset date picker to default (Last 30 Days)
-    setQuickDateRange('30days');
+    // Reset date picker to default (All time)
+    setQuickDateRange('all');
 }
+
+/**
+ * SECURITY NOTE: 
+ * The Supabase key used here is currently the 'service_role' key.
+ * This should NEVER be exposed in the frontend as it bypasses Row Level Security (RLS).
+ * Recommended: 
+ * 1. Use the 'anon' key and enable RLS in Supabase.
+ * 2. Or proxy requests through a secure Backend/Edge function.
+ */
 
 function setQuickDateRange(range) {
     const today = new Date();
@@ -537,19 +783,19 @@ function updateDashboard() {
 }
 
 function updateMetrics() {
-    const total = filteredData.length;
-    const metSLA = filteredData.filter(t => t.sla === 'Met').length;
-    const missedSLA = filteredData.filter(t => t.sla === 'Missed').length;
+    const stats = calculateSlaStats(filteredData);
 
-    elements.totalTickets.textContent = total.toLocaleString();
+    elements.totalTickets.textContent = stats.total.toLocaleString();
 
     // SLA percentages with ticket counts
-    elements.slaMet.textContent = total > 0 ? `${Math.round((metSLA / total) * 100)}%` : '-';
-    elements.slaMissed.textContent = total > 0 ? `${Math.round((missedSLA / total) * 100)}%` : '-';
+    elements.slaMet.textContent = stats.total > 0 ? `${Math.round(stats.metPct)}%` : '-';
+    // Missed % is Missed / Total
+    const missedPct = stats.total ? (stats.missed / stats.total) * 100 : 0;
+    elements.slaMissed.textContent = stats.total > 0 ? `${Math.round(missedPct)}%` : '-';
 
     // SLA ticket counts
-    if (elements.slaMetCount) elements.slaMetCount.textContent = `(${metSLA})`;
-    if (elements.slaMissedCount) elements.slaMissedCount.textContent = `(${missedSLA})`;
+    if (elements.slaMetCount) elements.slaMetCount.textContent = `(${stats.met})`;
+    if (elements.slaMissedCount) elements.slaMissedCount.textContent = `(${stats.missed})`;
 
     // Average resolution time
     const avgRes = calculateAverageResolution();
@@ -602,154 +848,70 @@ function initCharts() {
     // Global defaults for dark theme
     Chart.defaults.color = '#ffffff';
     Chart.defaults.plugins.legend.labels.color = '#ffffff';
+    Chart.defaults.font.family = 'Inter, system-ui, Arial';
 
-    // Daily Chart - shows values on top of bars (inside if >90% of max)
+    // 1. Daily Chart
     dailyChart = new Chart(document.getElementById('dailyChart'), {
         type: 'bar',
         data: { labels: [], datasets: [] },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            layout: { padding: { top: 20 } },
             plugins: {
-                legend: { labels: { color: '#ffffff' } },
-                datalabels: {
-                    color: '#ffffff',
-                    anchor: 'end',
-                    align: (context) => {
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        return value / max > 0.9 ? 'bottom' : 'top';
-                    },
-                    offset: 4,
-                    font: { weight: 'bold', size: 11 },
-                    formatter: (value) => value > 0 ? value : ''
-                }
+                legend: { display: false },
+                datalabels: OUTSIDE_BAR_LABELS
             },
             scales: {
-                x: {
-                    ticks: {
-                        color: '#a0a0b0',
-                        autoSkip: true,
-                        maxRotation: 45,
-                        minRotation: 0
-                    },
-                    grid: { color: 'rgba(255,255,255,0.05)' }
-                },
-                y: { ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                x: { ticks: { color: '#a0a0b0' }, grid: { display: false } },
+                y: { beginAtZero: true, ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
         }
     });
 
-    // Team Chart - shows percentages, tooltip shows count, legend shows team name + count
+    // 2. Team Chart (Doughnut with percent callouts)
     teamChart = new Chart(document.getElementById('teamChart'), {
         type: 'doughnut',
-        data: { labels: [], datasets: [] },
+        data: { labels: [], datasets: [{ data: [] }] },
         options: {
             responsive: true,
-            layout: {
-                padding: 25 // Added padding to prevent outside labels from being cropped
-            },
+            maintainAspectRatio: false,
+            layout: { padding: { top: 25, right: 35, bottom: 25, left: 35 } },
+            rotation: -0.35 * Math.PI,
             plugins: {
-                legend: {
-                    position: 'right',
-                    labels: {
-                        color: '#ffffff',
-                        font: { size: 10 },
-                        generateLabels: function (chart) {
-                            const data = chart.data;
-                            if (data.labels.length && data.datasets.length) {
-                                return data.labels.map((label, i) => {
-                                    const value = data.datasets[0].data[i];
-                                    return {
-                                        text: `${label} (${value})`,
-                                        fillStyle: data.datasets[0].backgroundColor[i],
-                                        hidden: false,
-                                        index: i,
-                                        fontColor: '#ffffff',
-                                        strokeStyle: '#ffffff'
-                                    };
-                                });
-                            }
-                            return [];
-                        }
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => `${ctx.label}: ${ctx.raw} tickets`
-                    }
-                },
-                datalabels: {
-                    color: '#ffffff',
-                    font: { weight: 'bold', size: 11 },
-                    // Only move outside if percentage is < 4%
-                    anchor: (ctx) => {
-                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                        const value = ctx.dataset.data[ctx.dataIndex];
-                        const pct = (value / total) * 100;
-                        return pct < 4 ? 'end' : 'center';
-                    },
-                    align: (ctx) => {
-                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                        const value = ctx.dataset.data[ctx.dataIndex];
-                        const pct = (value / total) * 100;
-                        return pct < 4 ? 'end' : 'center';
-                    },
-                    offset: 10,
-                    formatter: (value, ctx) => {
-                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                        const pct = Math.round((value / total) * 100);
-                        return pct > 0 ? pct + '%' : '';
-                    }
-                }
+                legend: { display: false },
+                datalabels: { display: false },
+                doughnutPercentCallouts: { minPct: 3, radial: 16, horiz: 28, snap: 10 }
             }
-        }
+        },
+        plugins: [doughnutPercentCallouts]
     });
 
-    // SLA Chart - shows percentages, tooltip shows count
+    // 3. SLA Chart (Pie)
     slaChart = new Chart(document.getElementById('slaChart'), {
         type: 'pie',
-        data: { labels: [], datasets: [] },
+        data: { labels: [], datasets: [{ data: [] }] },
         options: {
             responsive: true,
-            layout: {
-                padding: 20 // Added padding to prevent outside labels from being cropped
-            },
+            layout: { padding: { top: 18, right: 50, bottom: 18, left: 50 } },
             plugins: {
-                legend: { position: 'bottom', labels: { color: '#ffffff' } },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => `${ctx.label}: ${ctx.raw} tickets`
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        color: '#a0a0b0',
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 15
                     }
                 },
-                datalabels: {
-                    color: '#ffffff',
-                    font: { weight: 'bold', size: 12 },
-                    // Move outside ONLY if < 4%
-                    anchor: (ctx) => {
-                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                        const value = ctx.dataset.data[ctx.dataIndex];
-                        const pct = (value / total) * 100;
-                        return pct < 4 ? 'end' : 'center';
-                    },
-                    align: (ctx) => {
-                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                        const value = ctx.dataset.data[ctx.dataIndex];
-                        const pct = (value / total) * 100;
-                        return pct < 4 ? 'end' : 'center';
-                    },
-                    offset: 8,
-                    formatter: (value, ctx) => {
-                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                        const pct = Math.round((value / total) * 100);
-                        return pct > 3 ? pct + '%' : '';
-                    }
-                }
+                datalabels: { display: false },
+                doughnutPercentCallouts: { minPct: 1, radial: 12, horiz: 20 }
             }
-        }
+        },
+        plugins: [doughnutPercentCallouts]
     });
 
-    // Handler Chart - horizontal bar with values (top 10)
+    // 4. Handler Chart (Horizontal Bar)
     handlerChart = new Chart(document.getElementById('handlerChart'), {
         type: 'bar',
         data: { labels: [], datasets: [] },
@@ -757,121 +919,155 @@ function initCharts() {
             responsive: true,
             maintainAspectRatio: false,
             indexAxis: 'y',
+            layout: { padding: { right: 40 } },
             plugins: {
                 legend: { display: false },
                 datalabels: {
-                    color: '#ffffff',
-                    anchor: 'end',
-                    align: (context) => {
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        return value / max > 0.8 ? 'left' : 'right';
-                    },
-                    offset: 4,
-                    font: { weight: 'bold', size: 11 },
-                    formatter: (value) => value > 0 ? value : ''
+                    ...OUTSIDE_BAR_LABELS,
+                    align: 'right',
+                    anchor: 'end'
                 }
             },
             scales: {
-                x: {
-                    ticks: { color: '#a0a0b0' },
-                    grid: { color: 'rgba(255,255,255,0.05)' },
-                    beginAtZero: true
-                },
-                y: {
-                    ticks: { color: '#a0a0b0', font: { size: 10 } },
-                    grid: { color: 'rgba(255,255,255,0.05)' }
-                }
+                x: { beginAtZero: true, ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: '#a0a0b0', font: { size: 10 } }, grid: { display: false } }
             }
         }
     });
 
-    // Team SLA Performance Chart - grouped bar showing SLA % and Avg Resolution per team
+    // 5. Team SLA Performance Chart
     teamSlaChart = new Chart(document.getElementById('teamSlaChart'), {
         type: 'bar',
         data: { labels: [], datasets: [] },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            layout: { padding: { top: 20 } },
             plugins: {
-                legend: { labels: { color: '#ffffff' } },
+                legend: { display: false },
                 datalabels: {
-                    color: '#ffffff',
-                    anchor: 'end',
-                    align: (context) => {
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        return value / max > 0.9 ? 'bottom' : 'top';
-                    },
-                    offset: 4,
-                    font: { weight: 'bold', size: 10 },
+                    ...OUTSIDE_BAR_LABELS,
                     formatter: (value, ctx) => {
-                        if (ctx.datasetIndex === 0) return value + '%';
-                        return value;
+                        if (ctx.dataset.yAxisID === 'y') return value + '%';
+                        return formatDuration(value, uiUnits.teamSla);
                     }
                 },
                 tooltip: {
                     callbacks: {
                         label: (ctx) => {
-                            if (ctx.datasetIndex === 0) return `SLA Met: ${ctx.raw}%`;
-                            return `Avg Resolution: ${ctx.raw}`;
+                            if (ctx.dataset.yAxisID === 'y') return `SLA: ${ctx.raw}%`;
+                            return `Resolution: ${formatDuration(ctx.raw, uiUnits.teamSla)}`;
                         }
                     }
                 }
             },
             scales: {
-                x: { ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: { ticks: { color: '#a0a0b0' }, grid: { display: false } },
                 y: {
-                    type: 'linear',
-                    position: 'left',
-                    ticks: { color: '#22c55e' },
-                    grid: { color: 'rgba(255,255,255,0.05)' },
-                    title: { display: true, text: 'SLA Met %', color: '#22c55e' }
+                    max: 115,
+                    beginAtZero: true,
+                    ticks: { color: '#a0a0b0' },
+                    title: { display: true, text: 'SLA Met %', color: '#a0a0b0' }
                 },
                 y1: {
-                    type: 'linear',
                     position: 'right',
-                    ticks: { color: '#6366f1' },
+                    beginAtZero: true,
                     grid: { display: false },
-                    title: { display: true, text: 'Avg Resolution (min)', color: '#6366f1' }
+                    ticks: {
+                        color: '#a0a0b0',
+                        callback: (v) => formatDuration(v, uiUnits.teamSla)
+                    },
+                    title: { display: true, text: 'Avg Resolution Time', color: '#a0a0b0' }
                 }
             }
         }
     });
 
-    // Average Resolution by Team Chart
+    // 6. Category Chart (Bar) - HORIZONTAL
+    categoryChart = new Chart(document.getElementById('categoryChart'), {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            layout: { padding: { top: 20, right: 40 } },
+            plugins: {
+                legend: { display: false },
+                datalabels: {
+                    ...OUTSIDE_BAR_LABELS,
+                    align: 'right',
+                    anchor: 'end'
+                },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => {
+                            const idx = items[0].dataIndex;
+                            return categoryChart.data._fullLabels ? categoryChart.data._fullLabels[idx] : items[0].label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { beginAtZero: true, ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: '#a0a0b0', font: { size: 10 } }, grid: { display: false } }
+            }
+        }
+    });
+
+    // 7. Product Type Distribution
+    productTypeChart = new Chart(document.getElementById('productTypeChart'), {
+        type: 'doughnut',
+        data: { labels: [], datasets: [{ data: [] }] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 18, right: 50, bottom: 18, left: 50 } },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'right',
+                    labels: {
+                        color: '#a0a0b0',
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 15
+                    }
+                },
+                datalabels: { display: false },
+                doughnutPercentCallouts: { minPct: 1, radial: 12, horiz: 20 }
+            }
+        },
+        plugins: [doughnutPercentCallouts]
+    });
+
+    // 8. Avg Resolution: Work vs Non-Work
     avgResChart = new Chart(document.getElementById('avgResChart'), {
         type: 'bar',
         data: { labels: [], datasets: [] },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 20, right: 40 } },
             plugins: {
                 legend: { display: false },
                 datalabels: {
-                    color: '#ffffff',
-                    anchor: 'end',
-                    align: (context) => {
-                        const max = Math.max(...context.dataset.data);
-                        const value = context.dataset.data[context.dataIndex];
-                        return value / max > 0.9 ? 'bottom' : 'top';
-                    },
-                    offset: 4,
-                    font: { weight: 'bold', size: 10 },
-                    formatter: (value) => value > 0 ? value + 'm' : ''
+                    ...OUTSIDE_BAR_LABELS,
+                    formatter: (v) => formatDuration(v, uiUnits.avgRes)
                 },
                 tooltip: {
                     callbacks: {
-                        label: (ctx) => `Avg Resolution: ${ctx.raw} minutes`
+                        label: (ctx) => `Resolution: ${formatDuration(ctx.raw, uiUnits.avgRes)}`
                     }
                 }
             },
             scales: {
-                x: { ticks: { color: '#ffffff', font: { size: 9 } }, grid: { display: false } },
+                x: { beginAtZero: true, ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
                 y: {
-                    ticks: { color: '#ffffff' },
-                    grid: { color: 'rgba(255,255,255,0.05)' },
-                    title: { display: true, text: 'Minutes', color: '#ffffff' }
+                    ticks: {
+                        color: '#a0a0b0',
+                        callback: (v) => formatDuration(v, uiUnits.avgRes)
+                    },
+                    grid: { display: false }
                 }
             }
         }
@@ -879,396 +1075,269 @@ function initCharts() {
 }
 
 function updateCharts() {
-    // Daily volume - respects dashboard date filter
+    // 1. Daily Volume
     const dailyData = {};
-    filteredData.forEach(t => {
-        if (t.date) {
-            dailyData[t.date] = (dailyData[t.date] || 0) + 1;
-        }
-    });
-
-    // Sort available dates that have data
+    filteredData.forEach(t => { if (t.date) dailyData[t.date] = (dailyData[t.date] || 0) + 1; });
     const sortedDates = Object.keys(dailyData).sort();
-
     dailyChart.data.labels = sortedDates;
     dailyChart.data.datasets = [{
         label: 'Tickets',
         data: sortedDates.map(d => dailyData[d]),
         backgroundColor: 'rgba(99, 102, 241, 0.7)',
-        borderColor: 'rgba(99, 102, 241, 1)',
+        borderColor: '#6366f1',
         borderWidth: 1
     }];
-
-    // Fix Daily Chart labels to avoid cropping
-    dailyChart.options.plugins.datalabels.align = (context) => {
-        const max = Math.max(...context.dataset.data);
-        const value = context.dataset.data[context.dataIndex];
-        return value / max > 0.9 ? 'bottom' : 'top';
-    };
-    dailyChart.options.plugins.datalabels.anchor = 'end';
-
+    const dailyMax = Math.max(...(dailyChart.data.datasets[0].data), 0);
+    dailyChart.options.scales.y.suggestedMax = Math.ceil(dailyMax * 1.30) || 10; // +30% headroom
     dailyChart.update();
 
-    // Team distribution
-    const teamData = {};
-    filteredData.forEach(t => {
-        if (t.current_team) {
-            teamData[t.current_team] = (teamData[t.current_team] || 0) + 1;
-        }
-    });
-    const teamLabels = Object.keys(teamData);
-    teamChart.data.labels = teamLabels;
+    // 2. Team Distribution (Leader Lines)
+    const teamDataMap = {};
+    filteredData.forEach(t => { if (t.current_team) teamDataMap[t.current_team] = (teamDataMap[t.current_team] || 0) + 1; });
+    const teamLabels = Object.keys(teamDataMap).sort((a, b) => teamDataMap[b] - teamDataMap[a]);
+
+    teamChart._fullLabels = teamLabels; // Store for tooltip
+    teamChart.data.labels = teamLabels.map(getShortTeamName);
+    const teamColors = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#ef4444', '#f97316', '#eab308', '#22c55e'];
     teamChart.data.datasets = [{
-        data: teamLabels.map(t => teamData[t]),
-        backgroundColor: [
-            '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
-            '#ec4899', '#f43f5e', '#ef4444', '#f97316',
-            '#eab308', '#22c55e'
-        ]
+        data: teamLabels.map(l => teamDataMap[l]),
+        backgroundColor: teamColors
     }];
     teamChart.update();
 
-    // SLA breakdown
-    const metCount = filteredData.filter(t => t.sla === 'Met').length;
-    const missedCount = filteredData.filter(t => t.sla === 'Missed').length;
-    const noSla = filteredData.length - metCount - missedCount;
+    renderTeamDistList(teamLabels, teamLabels.map(l => teamDataMap[l]), teamColors);
+
+    // 3. SLA Breakdown (Pie)
+    const slaStats = calculateSlaStats(filteredData);
     slaChart.data.labels = ['Met', 'Missed', 'N/A'];
     slaChart.data.datasets = [{
-        data: [metCount, missedCount, noSla],
+        data: [slaStats.met, slaStats.missed, slaStats.na],
         backgroundColor: ['#22c55e', '#ef4444', '#6b7280']
     }];
     slaChart.update();
 
-    // All handlers sorted by ticket count
-    const handlerData = {};
-    filteredData.forEach(t => {
-        const handler = t.ticket_handler_agent_name;
-        if (handler && handler.trim()) {
-            handlerData[handler] = (handlerData[handler] || 0) + 1;
-        }
-    });
-
-    // Store all handlers globally for modal
-    window.allHandlersData = Object.entries(handlerData)
-        .sort((a, b) => b[1] - a[1]);
-
-    // Show only top 10 in main chart
-    const topHandlers = window.allHandlersData.slice(0, 10);
-
-    console.log('📊 Top 10 Handlers (of ' + window.allHandlersData.length + ')');
-
-    handlerChart.data.labels = topHandlers.map(h => h[0]);
+    // 4. Top 10 Handlers
+    const handlerDataMap = {};
+    filteredData.forEach(t => { if (t.ticket_handler_agent_name) handlerDataMap[t.ticket_handler_agent_name] = (handlerDataMap[t.ticket_handler_agent_name] || 0) + 1; });
+    const sortedHandlers = Object.entries(handlerDataMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    handlerChart.data.labels = sortedHandlers.map(h => h[0]);
     handlerChart.data.datasets = [{
-        data: topHandlers.map(h => h[1]),
+        data: sortedHandlers.map(h => h[1]),
         backgroundColor: 'rgba(139, 92, 246, 0.7)',
-        borderColor: 'rgba(139, 92, 246, 1)',
+        borderColor: '#8b5cf6',
         borderWidth: 1
     }];
+    const handlerMax = Math.max(...(handlerChart.data.datasets[0].data), 0);
+    const handlerHeadroom = handlerMax * 0.12;
+    const handlerNiceMax = Math.ceil((handlerMax + handlerHeadroom) / 10) * 10;
+    handlerChart.options.scales.x.suggestedMax = handlerNiceMax || 10;
     handlerChart.update();
 
-    // Team SLA Performance with Avg Resolution Time
-    const teamSlaData = {};
+    // 5. Team SLA Performance & Avg Resolution
+    updateTeamSlaChartOnly();
+
+    // 6. Category Distribution
+    const catMap = {};
+    filteredData.forEach(t => { const c = t.issue_category || 'Uncategorized'; catMap[c] = (catMap[c] || 0) + 1; });
+    const sortedCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+    categoryChart.data._fullLabels = sortedCats.map(c => c[0]);
+    categoryChart.data.labels = sortedCats.map(c => shortenLabel(c[0], 32));
+    categoryChart.data.datasets = [{
+        label: 'Tickets',
+        data: sortedCats.map(c => c[1]),
+        backgroundColor: 'rgba(99, 102, 241, 0.7)',
+        borderColor: '#6366f1',
+        borderWidth: 1
+    }];
+    const catMax = Math.max(...(categoryChart.data.datasets[0].data), 0);
+    const catHeadroom = catMax * 0.12;
+    const catNiceMax = Math.ceil((catMax + catHeadroom) / 10) * 10;
+    categoryChart.options.scales.x.suggestedMax = catNiceMax || 10;
+    categoryChart.update();
+
+    // 7. Product Type Distribution
+    const ptMap = {};
+    filteredData.forEach(t => {
+        let pt = t.product_type || '';
+        const lower = pt.toLowerCase();
+        if (lower.includes('cfd') || lower.includes('stellar') || lower.includes('instant')) pt = 'CFD';
+        else if (lower.includes('futures')) pt = 'Futures';
+        else if (!pt) return;
+        ptMap[pt] = (ptMap[pt] || 0) + 1;
+    });
+    const ptLabels = Object.keys(ptMap).sort();
+    productTypeChart.data.labels = ptLabels;
+    productTypeChart.data.datasets = [{
+        data: ptLabels.map(l => ptMap[l]),
+        backgroundColor: ['#8b5cf6', '#06b6d4', '#6b7280']
+    }];
+    productTypeChart.update();
+
+    // 8. Work vs Non-Work
+    updateAvgResChartOnly();
+
+    // Notes
+    if (elements.slaNaNote) elements.slaNaNote.style.display = slaStats.na > 0 ? 'block' : 'none';
+
+    // Agent Table update
+    updateAgentTable();
+}
+
+function renderTeamDistList(labels, counts, colors) {
+    const el = document.getElementById('teamDistList');
+    if (!el) return;
+
+    const total = counts.reduce((a, b) => a + (+b || 0), 0) || 1;
+
+    const rows = labels.map((name, idx) => ({
+        name,
+        count: counts[idx] || 0,
+        pct: ((counts[idx] || 0) / total) * 100,
+        color: colors[idx] || '#999'
+    })).sort((a, b) => b.count - a.count);
+
+    el.innerHTML = rows.map(r => `
+    <div class="team-dist-item">
+      <div class="team-dist-left">
+        <span class="team-dist-swatch" style="background:${r.color}"></span>
+        <span class="team-dist-name" title="${r.name}">${r.name}</span>
+      </div>
+      <div class="team-dist-right">
+        <span class="team-dist-count">${r.count.toLocaleString()}</span>
+        <span>${r.pct.toFixed(1)}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateAgentTable() {
+    const agentSlaData = {};
+    filteredData.forEach(t => {
+        const a = t.ticket_handler_agent_name;
+        if (!a) return;
+        if (!agentSlaData[a]) agentSlaData[a] = { total: 0, met: 0, missed: 0, na: 0 };
+        agentSlaData[a].total++;
+
+        // AGENT SLA LOGIC: agent_handle_time vs current_team threshold
+        let handleTime = parseFloat(t.agent_handle_time);
+        if (handleTime > 10000) handleTime = handleTime / 60; // Sanity: convert seconds if value is huge
+
+        const team = t.current_team;
+        const threshold = TEAM_SLA_MINUTES[team];
+
+        if (isNaN(handleTime) || !threshold) {
+            agentSlaData[a].na++;
+        } else if (handleTime <= threshold) {
+            agentSlaData[a].met++;
+        } else {
+            agentSlaData[a].missed++;
+        }
+    });
+
+    const sortedAgents = Object.keys(agentSlaData).sort((a, b) => agentSlaData[b].total - agentSlaData[a].total).slice(0, 20);
+
+    if (elements.agentSlaBody) {
+        elements.agentSlaBody.innerHTML = sortedAgents.map(a => {
+            const d = agentSlaData[a];
+            const totalSla = d.met + d.missed + d.na;
+            const pct = totalSla ? Math.round((d.met / totalSla) * 100) : 0;
+            const cls = pct >= 90 ? 'sla-good' : (pct >= 75 ? 'sla-warning' : 'sla-poor');
+            return `<tr><td>${a}</td><td>${d.total}</td><td>${d.met}</td><td>${d.missed}</td><td class="${cls}">${pct}%</td></tr>`;
+        }).join('');
+    }
+}
+
+function renderTeamSlaMiniLegend() {
+    const el = document.getElementById('teamSlaMiniLegend');
+    if (!el) return;
+    el.innerHTML = `
+        <div class="item"><span class="dot" style="background:#22c55e"></span>SLA Met %</div>
+        <div class="item"><span class="dot" style="background:#6366f1"></span>Avg Res (${uiUnits.teamSla})</div>
+    `;
+}
+
+function updateTeamSlaChartOnly() {
+    if (!teamSlaChart) return;
+
+    const teamStats = {};
     filteredData.forEach(t => {
         const team = t.current_team;
-        if (team) {
-            if (!teamSlaData[team]) {
-                teamSlaData[team] = { met: 0, missed: 0, total: 0, resolutionMinutes: [] };
-            }
-            teamSlaData[team].total++;
-            if (t.sla === 'Met') teamSlaData[team].met++;
-            if (t.sla === 'Missed') teamSlaData[team].missed++;
+        if (!team) return;
+        if (!teamStats[team]) teamStats[team] = { met: 0, missed: 0, na: 0, resMins: [] };
+        if (t.sla === 'Met') teamStats[team].met++;
+        else if (t.sla === 'Missed') teamStats[team].missed++;
+        else teamStats[team].na++;
 
-            // Parse resolution time
-            const resMin = parseResolutionTime(t.resolution_time);
-            if (resMin > 0) teamSlaData[team].resolutionMinutes.push(resMin);
-        }
+        const m = parseResolutionTime(t.resolution_time);
+        if (m > 0) teamStats[team].resMins.push(m);
     });
 
-    // Function to abbreviate team names
-    function getShortTeamName(fullName) {
-        const abbreviations = {
-            'Pro Solutions Task Force': 'PSTF',
-            'Pro Solution Task Force': 'PSTF',
-            'Ticket Dependencies': 'T Dependencies',
-            'CEx Reversal': 'CEx Reversal',
-            'Tech Team': 'TT',
-            'Platform Operations': 'PO',
-            'Payments and Treasury': 'P&T',
-            'Back Office': 'BO',
-            'BOps': 'BOps',
-            'Customer Experience': 'CEx',
-            'GB Email Communication': 'GB Email Com',
-            'GB Email Com': 'GB Email Com'
-        };
-        return abbreviations[fullName] || fullName.split(' ').map(w => w[0]).join('');
-    }
-
-    const teamNames = Object.keys(teamSlaData).sort();
-    const shortTeamNames = teamNames.map(getShortTeamName);
-    const slaMetPct = teamNames.map(t => {
-        const d = teamSlaData[t];
-        const slaTotalCount = d.met + d.missed;
-        return slaTotalCount > 0 ? Math.round((d.met / slaTotalCount) * 100) : 0;
-    });
-    const avgResolution = teamNames.map(t => {
-        const resArr = teamSlaData[t].resolutionMinutes;
-        if (resArr.length === 0) return 0;
-        const avg = resArr.reduce((a, b) => a + b, 0) / resArr.length;
-        return Math.round(avg);
+    const teamsSorted = Object.keys(teamStats).sort();
+    const slaPcts = teamsSorted.map(t => {
+        const s = teamStats[t];
+        const total = s.met + s.missed + s.na;
+        return total ? Math.round((s.met / total) * 100) : 0;
     });
 
-    teamSlaChart.data.labels = shortTeamNames;
+    const resAvgsMin = teamsSorted.map(t => {
+        const arr = teamStats[t].resMins;
+        if (!arr.length) return 0;
+        return (arr.reduce((a, b) => a + b, 0) / arr.length);
+    });
+
+    teamSlaChart.data.labels = teamsSorted.map(getShortTeamName);
     teamSlaChart.data.datasets = [
-        {
-            label: 'SLA Met %',
-            data: slaMetPct,
-            backgroundColor: 'rgba(34, 197, 94, 0.7)',
-            borderColor: 'rgba(34, 197, 94, 1)',
-            borderWidth: 1,
-            yAxisID: 'y'
-        },
-        {
-            label: 'Avg Resolution (min)',
-            data: avgResolution,
-            backgroundColor: 'rgba(99, 102, 241, 0.7)',
-            borderColor: 'rgba(99, 102, 241, 1)',
-            borderWidth: 1,
-            yAxisID: 'y1'
-        }
+        { label: 'SLA Met %', data: slaPcts, backgroundColor: 'rgba(34, 197, 94, 0.7)', borderColor: '#22c55e', borderWidth: 1, yAxisID: 'y' },
+        { label: `Avg Res (${uiUnits.teamSla})`, data: resAvgsMin, backgroundColor: 'rgba(99, 102, 241, 0.7)', borderColor: '#6366f1', borderWidth: 1, yAxisID: 'y1' }
     ];
+
+    teamSlaChart.options.plugins.datalabels.formatter = (value, ctx) => {
+        if (ctx.dataset.yAxisID === 'y') return value + '%';
+        return formatDuration(value, uiUnits.teamSla);
+    };
+
+    teamSlaChart.options.plugins.tooltip.callbacks.label = (ctx) => {
+        if (ctx.dataset.yAxisID === 'y') return `SLA: ${ctx.raw}%`;
+        return `Resolution: ${formatDuration(ctx.raw, uiUnits.teamSla)}`;
+    };
+
+    const resMax = Math.max(...resAvgsMin, 0);
+    teamSlaChart.options.scales.y1.suggestedMax = resMax * 1.2 || 10;
+
+    renderTeamSlaMiniLegend();
     teamSlaChart.update();
+}
 
-    // Average Resolution: Working vs Non-Working Hours
-    const workHours = { sum: 0, count: 0 };
-    const nonWorkHours = { sum: 0, count: 0 };
+function updateAvgResChartOnly() {
+    if (!avgResChart) return;
 
+    const wh = { sum: 0, count: 0 }, nwh = { sum: 0, count: 0 };
     filteredData.forEach(t => {
         const team = (t.current_team || "").toLowerCase();
         const is24x7 = team.includes("pro solution") || team.includes("cex reversal") || team.includes("ticket dependencies");
-
-        const resMin = parseResolutionTime(t.resolution_time);
-        if (resMin > 0) {
-            // Force 24/7 teams into "Working Hours"
-            if (is24x7 || t.resolved_during_office_hours === true) {
-                workHours.sum += resMin;
-                workHours.count++;
-            } else if (t.resolved_during_office_hours === false) {
-                nonWorkHours.sum += resMin;
-                nonWorkHours.count++;
-            }
+        const m = parseResolutionTime(t.resolution_time);
+        if (m > 0) {
+            if (is24x7 || t.resolved_during_office_hours === true) { wh.sum += m; wh.count++; }
+            else if (t.resolved_during_office_hours === false) { nwh.sum += m; nwh.count++; }
         }
     });
 
-    const avgWork = workHours.count > 0 ? Math.round(workHours.sum / workHours.count) : 0;
-    const avgNonWork = nonWorkHours.count > 0 ? Math.round(nonWorkHours.sum / nonWorkHours.count) : 0;
+    const dataMin = [
+        wh.count ? (wh.sum / wh.count) : 0,
+        nwh.count ? (nwh.sum / nwh.count) : 0
+    ];
 
-    avgResChart.data.labels = ['Working Hours', 'Non-Working'];
-    avgResChart.data.datasets = [{
-        label: 'Avg Minutes',
-        data: [avgWork, avgNonWork],
-        backgroundColor: ['#22c55e', '#6366f1'],
-        borderColor: ['#22c55e', '#6366f1'],
-        borderWidth: 1
-    }];
+    avgResChart.data.labels = ['Work Hours', 'After Hours'];
+    avgResChart.data.datasets = [{ data: dataMin, backgroundColor: ['#22c55e', '#6366f1'] }];
+
+    avgResChart.options.plugins.datalabels.formatter = (v) => formatDuration(v, uiUnits.avgRes);
+    avgResChart.options.plugins.tooltip.callbacks.label = (ctx) => `Resolution: ${formatDuration(ctx.raw, uiUnits.avgRes)}`;
+
+    const avgMax = Math.max(...dataMin, 0);
+    avgResChart.options.scales.y.suggestedMax = avgMax * 1.2 || 10;
+
     avgResChart.update();
-
-    // =========================
-    // Product Type Pie Chart
-    // =========================
-    const productTypeCounts = {};
-    filteredData.forEach(t => {
-        let pt = t.product_type || '';
-        // Normalize: Stellar Instant counts as CFD
-        const ptLower = pt.toLowerCase();
-        if (ptLower === 'cfds' || ptLower === 'cfd' || ptLower.includes('stellar') || ptLower.includes('instant')) {
-            pt = 'CFD';
-        } else if (ptLower === 'futures') {
-            pt = 'Futures';
-        } else {
-            // Skip unknown/empty product types for the pie chart
-            return;
-        }
-        productTypeCounts[pt] = (productTypeCounts[pt] || 0) + 1;
-    });
-
-    const ptLabels = Object.keys(productTypeCounts).sort();
-    const ptData = ptLabels.map(l => productTypeCounts[l]);
-    const ptTotal = ptData.reduce((a, b) => a + b, 0);
-
-    const ptColors = {
-        'CFD': 'rgba(139, 92, 246, 0.8)',
-        'Futures': 'rgba(6, 182, 212, 0.8)',
-        'Unknown': 'rgba(107, 114, 128, 0.8)'
-    };
-
-    const productTypeCtx = document.getElementById('productTypeChart');
-    if (productTypeCtx) {
-        if (productTypeChart) productTypeChart.destroy();
-        productTypeChart = new Chart(productTypeCtx.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: ptLabels,
-                datasets: [{
-                    data: ptData,
-                    backgroundColor: ptLabels.map(l => ptColors[l] || 'rgba(99, 102, 241, 0.8)'),
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '50%',
-                layout: {
-                    padding: 20 // Added padding to prevent outside labels from being cropped
-                },
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: { color: '#ffffff', padding: 15 }
-                    },
-                    datalabels: {
-                        color: '#ffffff',
-                        font: { weight: 'bold', size: 12 },
-                        // Move outside ONLY if < 4%
-                        anchor: (ctx) => {
-                            const total = ptData.reduce((a, b) => a + b, 0);
-                            const value = ctx.dataset.data[ctx.dataIndex];
-                            const pct = total > 0 ? (value / total) * 100 : 0;
-                            return pct < 4 ? 'end' : 'center';
-                        },
-                        align: (ctx) => {
-                            const total = ptData.reduce((a, b) => a + b, 0);
-                            const value = ctx.dataset.data[ctx.dataIndex];
-                            const pct = total > 0 ? (value / total) * 100 : 0;
-                            return pct < 4 ? 'end' : 'center';
-                        },
-                        offset: 8,
-                        formatter: (value, ctx) => {
-                            const pct = ptTotal > 0 ? Math.round((value / ptTotal) * 100) : 0;
-                            return `${pct}%\n(${value})`;
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // =========================
-    // Agent SLA Performance Table
-    // =========================
-    const agentSlaData = {};
-    filteredData.forEach(t => {
-        const agent = t.ticket_handler_agent_name;
-        if (!agent) return;
-        if (!agentSlaData[agent]) {
-            agentSlaData[agent] = { total: 0, met: 0, missed: 0 };
-        }
-        agentSlaData[agent].total++;
-        if (t.sla === 'Met') agentSlaData[agent].met++;
-        if (t.sla === 'Missed') agentSlaData[agent].missed++;
-    });
-
-    // Sort by total descending
-    const sortedAgents = Object.keys(agentSlaData)
-        .sort((a, b) => agentSlaData[b].total - agentSlaData[a].total)
-        .slice(0, 20); // Top 20 agents
-
-    if (elements.agentSlaBody) {
-        elements.agentSlaBody.innerHTML = sortedAgents.map(agent => {
-            const d = agentSlaData[agent];
-            const slaTotal = d.met + d.missed;
-            const slaPct = slaTotal > 0 ? Math.round((d.met / slaTotal) * 100) : 0;
-            const slaClass = slaPct >= 90 ? 'sla-good' : (slaPct >= 70 ? 'sla-warning' : 'sla-poor');
-            return `<tr>
-                <td>${agent}</td>
-                <td>${d.total}</td>
-                <td>${d.met}</td>
-                <td>${d.missed}</td>
-                <td class="${slaClass}">${slaPct}%</td>
-            </tr>`;
-        }).join('');
-    }
-
-    // =========================
-    // Show N/A Note if there are N/A tickets
-    // =========================
-    const naSlaCount = filteredData.filter(t => t.sla === 'N/A').length;
-    if (elements.slaNaNote) {
-        elements.slaNaNote.style.display = naSlaCount > 0 ? 'block' : 'none';
-    }
-
-    // =========================
-    // Ticket Category Distribution Chart
-    // =========================
-    const categoryCounts = {};
-    filteredData.forEach(t => {
-        const cat = t.issue_category || 'Uncategorized';
-        categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-    });
-
-    // Sort by count descending and take top 10
-    const sortedCategories = Object.entries(categoryCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-
-    const catLabels = sortedCategories.map(c => c[0]);
-    const catData = sortedCategories.map(c => c[1]);
-
-    const categoryCtx = document.getElementById('categoryChart');
-    if (categoryCtx) {
-        if (categoryChart) categoryChart.destroy();
-        categoryChart = new Chart(categoryCtx.getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: catLabels,
-                datasets: [{
-                    label: 'Tickets',
-                    data: catData,
-                    backgroundColor: 'rgba(99, 102, 241, 0.7)',
-                    borderColor: 'rgba(99, 102, 241, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        beginAtZero: true,
-                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                        ticks: { color: '#a0a0b0' }
-                    },
-                    y: {
-                        grid: { display: false },
-                        ticks: {
-                            color: '#ffffff',
-                            font: { size: 11 },
-                            callback: function (value) {
-                                const label = this.getLabelForValue(value);
-                                return label.length > 35 ? label.substring(0, 35) + '...' : label;
-                            }
-                        }
-                    }
-                },
-                plugins: {
-                    legend: { display: false },
-                    datalabels: {
-                        color: '#ffffff',
-                        anchor: 'end',
-                        align: (context) => {
-                            const max = Math.max(...context.dataset.data);
-                            const value = context.dataset.data[context.dataIndex];
-                            return value / max > 0.9 ? 'left' : 'right';
-                        },
-                        font: { weight: 'bold', size: 11 },
-                        formatter: (value) => value
-                    }
-                }
-            },
-            plugins: [ChartDataLabels]
-        });
-    }
 }
 
 // ============================================

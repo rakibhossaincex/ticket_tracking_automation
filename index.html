@@ -90,6 +90,16 @@
                     <input type="hidden" id="teamFilter" value="">
                 </div>
 
+                <!-- Category Filter -->
+                <div class="filter-group searchable">
+                    <label>Category</label>
+                    <div class="searchable-dropdown" id="categoryDropdown">
+                        <input type="text" id="categorySearch" placeholder="Search categories..." autocomplete="off">
+                        <div class="dropdown-options" id="categoryOptions"></div>
+                    </div>
+                    <input type="hidden" id="categoryFilter" value="">
+                </div>
+
                 <!-- SLA Filter -->
                 <div class="filter-group">
                     <label>SLA Status</label>
@@ -154,7 +164,12 @@
             </div>
             <div class="chart-card">
                 <h3>Team Distribution</h3>
-                <canvas id="teamChart"></canvas>
+                <div class="team-dist-wrap">
+                    <div class="team-dist-chart">
+                        <canvas id="teamChart"></canvas>
+                    </div>
+                    <div class="team-dist-list" id="teamDistList"></div>
+                </div>
             </div>
         </section>
 
@@ -196,6 +211,11 @@
             <div class="chart-card">
                 <div class="chart-header">
                     <h3>Avg Resolution: Work vs Non-Work</h3>
+                    <div class="unit-toggle" id="avgResUnitToggle">
+                        <button class="unit-btn active" data-unit="min">Min</button>
+                        <button class="unit-btn" data-unit="hour">Hour</button>
+                        <button class="unit-btn" data-unit="day">Day</button>
+                    </div>
                 </div>
                 <canvas id="avgResChart"></canvas>
             </div>
@@ -228,7 +248,17 @@
         <!-- Charts Row 4: Full width -->
         <section class="charts-grid-full">
             <div class="chart-card">
-                <h3>Team SLA Performance & Avg Resolution Time</h3>
+                <div class="chart-header">
+                    <h3>Team SLA Performance & Avg Resolution Time</h3>
+                    <div class="header-right">
+                        <div class="mini-legend" id="teamSlaMiniLegend"></div>
+                        <div class="unit-toggle" id="slaUnitToggle">
+                            <button class="unit-btn active" data-unit="min">Min</button>
+                            <button class="unit-btn" data-unit="hour">Hour</button>
+                            <button class="unit-btn" data-unit="day">Day</button>
+                        </div>
+                    </div>
+                </div>
                 <canvas id="teamSlaChart"></canvas>
             </div>
         </section>
