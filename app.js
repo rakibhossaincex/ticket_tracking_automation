@@ -31,13 +31,18 @@ let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChar
 // DOM Elements
 const elements = {
     dateRange: document.getElementById('dateRange'),
+    dateRangeText: document.getElementById('dateRangeText'),
+    dateRangeTrigger: document.getElementById('dateRangeTrigger'),
+    datePickerDropdown: document.getElementById('datePickerDropdown'),
+    customFrom: document.getElementById('customFrom'),
+    customTo: document.getElementById('customTo'),
+    applyDates: document.getElementById('applyDates'),
+    cancelDates: document.getElementById('cancelDates'),
     agentFilter: document.getElementById('agentFilter'),
     teamFilter: document.getElementById('teamFilter'),
     slaFilter: document.getElementById('slaFilter'),
     searchInput: document.getElementById('searchInput'),
     resetFilters: document.getElementById('resetFilters'),
-    refreshBtn: document.getElementById('refreshBtn'),
-    lastUpdated: document.getElementById('lastUpdated'),
     totalTickets: document.getElementById('totalTickets'),
     slaMet: document.getElementById('slaMet'),
     slaMissed: document.getElementById('slaMissed'),
@@ -62,19 +67,14 @@ let datePicker;
 // ============================================
 
 async function init() {
-    // Initialize date picker
-    datePicker = flatpickr(elements.dateRange, {
-        mode: 'range',
-        dateFormat: 'Y-m-d',
-        theme: 'dark',
-        onChange: applyFilters
-    });
+    // Initialize custom date picker
+    initCustomDatePicker();
 
-    // Event Listeners for searchable dropdowns are set up in initSearchableDropdowns
+    // Event Listeners for searchable dropdowns
     elements.slaFilter.addEventListener('change', applyFilters);
     elements.searchInput.addEventListener('input', debounce(applyFilters, 300));
     elements.resetFilters.addEventListener('click', resetFilters);
-    elements.refreshBtn.addEventListener('click', loadData);
+
     elements.pageSize.addEventListener('change', (e) => {
         pageSize = parseInt(e.target.value);
         currentPage = 1;
@@ -83,14 +83,6 @@ async function init() {
     elements.prevPage.addEventListener('click', () => changePage(-1));
     elements.nextPage.addEventListener('click', () => changePage(1));
     elements.exportCsv.addEventListener('click', exportToCsv);
-
-    // Quick date buttons
-    document.querySelectorAll('[data-range]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const range = e.target.dataset.range;
-            setQuickDateRange(range);
-        });
-    });
 
     // Table sorting
     document.querySelectorAll('th[data-sort]').forEach(th => {
@@ -117,12 +109,6 @@ async function init() {
 
     // Load data
     await loadData();
-
-    // Auto-refresh data every 5 minutes (300000ms)
-    setInterval(async () => {
-        console.log('🔄 Auto-refreshing data...');
-        await loadData();
-    }, 300000);
 }
 
 // ============================================
@@ -182,8 +168,8 @@ async function loadData() {
         // Apply any existing filters
         applyFilters();
 
-        // Update last updated time
-        elements.lastUpdated.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+        // Update last updated time (Note: Removed per user request)
+        // elements.lastUpdated.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
 
     } catch (error) {
         console.error('❌ Error loading data:', error);
@@ -295,7 +281,8 @@ function initSearchableDropdown(type, options, placeholder) {
 // ============================================
 
 function applyFilters() {
-    const dateRange = datePicker.selectedDates;
+    const rawDates = elements.dateRange.value;
+    const dateRange = rawDates ? rawDates.split(' to ').map(d => new Date(d)) : [];
     const sla = elements.slaFilter.value;
     const search = elements.searchInput.value.toLowerCase();
 
@@ -339,7 +326,8 @@ function applyFilters() {
 }
 
 function resetFilters() {
-    datePicker.clear();
+    // Reset date picker to default (Last 30 Days)
+    setQuickDateRange('30days');
     selectedAgents.clear();
     selectedTeams.clear();
     const agentSearch = document.getElementById('agentSearch');
@@ -364,28 +352,118 @@ function setQuickDateRange(range) {
     let start = new Date();
     start.setHours(0, 0, 0, 0);
 
+    let label = '';
     switch (range) {
         case 'today':
+            label = 'Today';
+            break;
+        case 'yesterday':
+            start.setDate(start.getDate() - 1);
+            today.setDate(today.getDate() - 1);
+            today.setHours(23, 59, 59, 999);
+            label = 'Yesterday';
             break;
         case '7days':
             start.setDate(start.getDate() - 6);
+            label = 'Last 7 Days';
             break;
         case '30days':
             start.setDate(start.getDate() - 29);
+            label = 'Last 30 Days';
+            break;
+        case '90days':
+            start.setDate(start.getDate() - 89);
+            label = 'Last 90 Days';
             break;
         case 'month':
             start.setDate(1);
+            label = 'This Month';
             break;
     }
 
-    datePicker.setDate([start, today]);
+    if (range !== 'custom') {
+        const startStr = start.toISOString().split('T')[0];
+        const endStr = today.toISOString().split('T')[0];
+        elements.dateRange.value = startStr === endStr ? startStr : `${startStr} to ${endStr}`;
+        elements.dateRangeText.textContent = label;
 
-    // Update button states
-    document.querySelectorAll('[data-range]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.range === range);
+        // Update custom fields for consistency
+        elements.customFrom._flatpickr.setDate(start);
+        elements.customTo._flatpickr.setDate(today);
+
+        // Update active class in sidebar
+        document.querySelectorAll('.picker-opt').forEach(opt => {
+            opt.classList.toggle('active', opt.dataset.range === range);
+        });
+
+        applyFilters();
+    }
+}
+
+function initCustomDatePicker() {
+    // Toggle dropdown
+    elements.dateRangeTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        elements.datePickerDropdown.classList.toggle('active');
     });
 
-    applyFilters();
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#datePickerCustom')) {
+            elements.datePickerDropdown.classList.remove('active');
+        }
+    });
+
+    // Sidebar options
+    document.querySelectorAll('.picker-opt').forEach(opt => {
+        opt.addEventListener('click', () => {
+            const range = opt.dataset.range;
+            if (range === 'custom') {
+                document.querySelectorAll('.picker-opt').forEach(o => o.classList.remove('active'));
+                opt.classList.add('active');
+                return; // Wait for Apply button
+            }
+            setQuickDateRange(range);
+            elements.datePickerDropdown.classList.remove('active');
+        });
+    });
+
+    // Initialize Flatpickr for "FROM" and "TO" fields
+    const fromPicker = flatpickr(elements.customFrom, {
+        dateFormat: 'Y-m-d',
+        theme: 'dark'
+    });
+    const toPicker = flatpickr(elements.customTo, {
+        dateFormat: 'Y-m-d',
+        theme: 'dark'
+    });
+
+    // Apply button
+    elements.applyDates.addEventListener('click', () => {
+        const fromDate = elements.customFrom.value;
+        const toDate = elements.customTo.value;
+
+        if (fromDate && toDate) {
+            elements.dateRange.value = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
+            elements.dateRangeText.textContent = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
+
+            // If they picked a custom range, mark "Custom" as active
+            document.querySelectorAll('.picker-opt').forEach(opt => {
+                opt.classList.toggle('active', opt.dataset.range === 'custom');
+            });
+
+            applyFilters();
+            elements.datePickerDropdown.classList.remove('active');
+        }
+    });
+
+    // Cancel button
+    elements.cancelDates.addEventListener('click', () => {
+        elements.datePickerDropdown.classList.remove('active');
+    });
+
+    // Set initial default (Last 30 Days)
+    setQuickDateRange('30days');
 }
 
 // ============================================

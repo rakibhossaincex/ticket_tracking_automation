@@ -68,23 +68,25 @@ body {
     gap: 16px;
 }
 
-.header-info {
+.sync-badge {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
+    align-items: center;
+    gap: 10px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    padding: 8px 16px;
+    border-radius: 30px;
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);
 }
 
-.last-updated {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
+.sync-icon {
+    font-size: 1.1rem;
 }
 
 .sync-info {
-    color: var(--text-secondary);
-    font-size: 0.7rem;
-    opacity: 0.7;
-    font-style: italic;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 500;
 }
 
 /* Buttons */
@@ -116,6 +118,16 @@ body {
 
 .btn-secondary:hover {
     background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .btn-sm {
@@ -438,14 +450,151 @@ body {
     color: var(--accent-primary);
 }
 
-/* Searchable Dropdown Styles */
-.filter-group.searchable {
+/* Custom Date Picker */
+.date-picker-custom {
     position: relative;
-    z-index: 100;
+    width: 240px;
 }
 
-.searchable-dropdown {
-    position: relative;
+.date-picker-trigger {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.date-picker-trigger:hover {
+    border-color: var(--accent-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.date-picker-trigger .calendar-icon {
+    font-size: 1rem;
+    opacity: 0.8;
+}
+
+.date-picker-trigger #dateRangeText {
+    flex: 1;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.date-picker-trigger .dropdown-arrow {
+    font-size: 0.7rem;
+    opacity: 0.5;
+}
+
+.date-picker-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    background: #1a1a2e;
+    /* Solid dark background for clarity */
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    width: 480px;
+    overflow: hidden;
+}
+
+.date-picker-dropdown.active {
+    display: flex;
+}
+
+.picker-sidebar {
+    width: 160px;
+    border-right: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 8px 0;
+}
+
+.picker-opt {
+    width: 100%;
+    padding: 12px 20px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    text-align: left;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.picker-opt:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.picker-opt.active {
+    color: var(--accent-primary);
+    background: rgba(99, 102, 241, 0.1);
+    font-weight: 600;
+    border-left: 3px solid var(--accent-primary);
+}
+
+.picker-main {
+    flex: 1;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.custom-range-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.range-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.range-field label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+}
+
+.range-field input {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    width: 100%;
+    cursor: pointer;
+}
+
+.range-field input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.picker-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 10px;
+}
+
+/* Flatpickr customization */
+.flatpickr-calendar {
+    background: #1a1a2e !important;
+    border: 1px solid var(--border-color) !important;
 }
 
 .searchable-dropdown input {

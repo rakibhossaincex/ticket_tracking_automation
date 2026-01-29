@@ -20,10 +20,9 @@
         <header class="header">
             <h1>🎫 Ticket Analytics Dashboard</h1>
             <div class="header-actions">
-                <button id="refreshBtn" class="btn btn-primary">↻ Refresh Data</button>
-                <div class="header-info">
-                    <span id="lastUpdated" class="last-updated"></span>
-                    <span class="sync-info">(Data fetched every 2 hours from Intercom)</span>
+                <div class="sync-badge">
+                    <span class="sync-icon">🕒</span>
+                    <span class="sync-info">Data fetched every 2 hours from Intercom</span>
                 </div>
             </div>
         </header>
@@ -31,21 +30,43 @@
         <!-- Filter Bar -->
         <section class="filter-bar">
             <div class="filter-row">
-                <!-- Date Range -->
-                <div class="filter-group">
+                <!-- Date Range Filter -->
+                <div class="filter-group date-filter-container">
                     <label>Date Range</label>
-                    <input type="text" id="dateRange" class="filter-input" placeholder="Select dates...">
-                </div>
+                    <div class="date-picker-custom" id="datePickerCustom">
+                        <div class="date-picker-trigger" id="dateRangeTrigger">
+                            <span class="calendar-icon">📅</span>
+                            <span id="dateRangeText">Last 30 Days</span>
+                            <span class="dropdown-arrow">▼</span>
+                        </div>
 
-                <!-- Quick Date Buttons -->
-                <div class="filter-group quick-dates">
-                    <label>Quick Select</label>
-                    <div class="btn-group">
-                        <button class="btn btn-sm" data-range="today">Today</button>
-                        <button class="btn btn-sm" data-range="7days">7 Days</button>
-                        <button class="btn btn-sm" data-range="30days">30 Days</button>
-                        <button class="btn btn-sm" data-range="month">This Month</button>
+                        <div class="date-picker-dropdown" id="datePickerDropdown">
+                            <div class="picker-sidebar">
+                                <button class="picker-opt" data-range="today">Today</button>
+                                <button class="picker-opt" data-range="yesterday">Yesterday</button>
+                                <button class="picker-opt active" data-range="30days">Last 30 Days</button>
+                                <button class="picker-opt" data-range="90days">Last 90 Days</button>
+                                <button class="picker-opt" data-range="custom">Custom</button>
+                            </div>
+                            <div class="picker-main">
+                                <div class="custom-range-inputs">
+                                    <div class="range-field">
+                                        <label>FROM</label>
+                                        <input type="text" id="customFrom" placeholder="MM/DD/YYYY">
+                                    </div>
+                                    <div class="range-field">
+                                        <label>TO</label>
+                                        <input type="text" id="customTo" placeholder="MM/DD/YYYY">
+                                    </div>
+                                </div>
+                                <div class="picker-actions">
+                                    <button class="btn btn-sm btn-ghost" id="cancelDates">Cancel</button>
+                                    <button class="btn btn-sm btn-primary" id="applyDates">Apply</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                    <input type="hidden" id="dateRange" value="">
                 </div>
 
                 <!-- Agent Filter -->
