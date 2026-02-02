@@ -185,7 +185,8 @@ body {
     display: flex;
     flex-wrap: nowrap;
     /* Force all filters on a single line */
-    gap: 10px;
+    gap: 8px;
+    /* Tightened gap */
     align-items: flex-end;
     overflow: visible;
 }
@@ -197,9 +198,10 @@ body {
 }
 
 .filter-group label {
-    font-size: 0.75rem;
+    font-size: 0.68rem;
+    /* Smaller labels */
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
     color: var(--text-secondary);
 }
 
@@ -207,17 +209,20 @@ body {
 .filter-select,
 .date-picker-trigger,
 .searchable-dropdown input {
-    height: 38px;
-    padding: 0 10px;
+    height: 36px;
+    /* Further reduced height */
+    padding: 0 8px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
-    font-size: 0.8rem;
-    min-width: 100px;
+    font-size: 0.78rem;
+    /* Smaller text */
+    min-width: 60px;
+    /* Highly flexible */
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     transition: all 0.2s ease;
     width: 100%;
 }
@@ -244,12 +249,12 @@ body {
 }
 
 .search-group .filter-input {
-    min-width: 130px;
+    min-width: 100px;
 }
 
 .sla-filter-group .searchable-dropdown input {
-    min-width: 80px;
-    padding-right: 25px;
+    min-width: 70px;
+    padding-right: 20px;
     position: relative;
 }
 
@@ -257,10 +262,10 @@ body {
 .sla-filter-group .searchable-dropdown::after {
     content: '▼';
     position: absolute;
-    right: 10px;
+    right: 8px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.7rem;
+    font-size: 0.6rem;
     color: var(--text-secondary);
     pointer-events: none;
     opacity: 0.6;
@@ -268,20 +273,20 @@ body {
 
 #resetFilters {
     white-space: nowrap;
-    padding: 0 15px;
-    height: 38px;
+    padding: 0 12px;
+    height: 36px;
     flex-shrink: 0;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
 }
 
 .filter-group.searchable {
-    flex: 1 1 auto;
-    min-width: 100px;
+    flex: 1 1 120px;
+    min-width: 80px;
 }
 
 .date-filter-container {
-    flex: 0 1 150px;
-    min-width: 140px;
+    flex: 1 1 140px;
+    min-width: 110px;
 }
 
 /* Metric Cards */
@@ -663,7 +668,8 @@ body {
 /* Custom Date Picker */
 .date-picker-custom {
     position: relative;
-    width: 240px;
+    width: 100%;
+    /* Changed from 240px to prevent overlap */
 }
 
 .date-picker-trigger {
