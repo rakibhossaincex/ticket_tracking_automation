@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket Analytics Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎫 Ticket Analytics Dashboard</h1>
+            <div class="header-actions">
+                <div class="sync-badge">
+                    <span class="sync-icon">🕒</span>
+                    <span class="sync-info">Data fetched every 2 hours from Intercom</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Filter Bar -->
+        <section class="filter-bar">
+            <div class="filter-row">
+                <!-- Date Range Filter -->
+                <div class="filter-group date-filter-container">
+                    <label>Date Range</label>
+                    <div class="date-picker-custom" id="datePickerCustom">
+                        <div class="date-picker-trigger" id="dateRangeTrigger">
+                            <span class="calendar-icon">📅</span>
+                            <span id="dateRangeText">All time</span>
+                            <span class="dropdown-arrow">▼</span>
+                        </div>
+
+                        <div class="date-picker-dropdown" id="datePickerDropdown">
+                            <div class="picker-sidebar">
+                                <button class="picker-opt active" data-range="all">All time</button>
+                                <button class="picker-opt" data-range="today">Today</button>
+                                <button class="picker-opt" data-range="yesterday">Yesterday</button>
+                                <button class="picker-opt" data-range="30days">Last 30 Days</button>
+                                <button class="picker-opt" data-range="90days">Last 90 Days</button>
+                                <button class="picker-opt" data-range="custom">Custom</button>
+                            </div>
+                            <div class="picker-main">
+                                <div class="custom-range-inputs">
+                                    <div class="range-field">
+                                        <label>FROM</label>
+                                        <input type="text" id="customFrom" placeholder="MM/DD/YYYY">
+                                    </div>
+                                    <div class="range-field">
+                                        <label>TO</label>
+                                        <input type="text" id="customTo" placeholder="MM/DD/YYYY">
+                                    </div>
+                                </div>
+                                <div class="picker-actions">
+                                    <button class="btn btn-sm btn-ghost" id="cancelDates">Cancel</button>
+                                    <button class="btn btn-sm btn-primary" id="applyDates">Apply</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="dateRange" value="">
+                </div>
+
+                <!-- Agent Filter -->
+                <div class="filter-group searchable">
+                    <label>Handler</label>
+                    <div class="searchable-dropdown" id="agentDropdown">
+                        <input type="text" id="agentSearch" placeholder="Search agents..." autocomplete="off">
+                        <div class="dropdown-options" id="agentOptions"></div>
+                    </div>
+                    <input type="hidden" id="agentFilter" value="">
+                </div>
+
+                <!-- Team Filter -->
+                <div class="filter-group searchable">
+                    <label>Team</label>
+                    <div class="searchable-dropdown" id="teamDropdown">
+                        <input type="text" id="teamSearch" placeholder="Search teams..." autocomplete="off">
+                        <div class="dropdown-options" id="teamOptions"></div>
+                    </div>
+                    <input type="hidden" id="teamFilter" value="">
+                </div>
+
+                <!-- Category Filter -->
+                <div class="filter-group searchable">
+                    <label>Category</label>
+                    <div class="searchable-dropdown" id="categoryDropdown">
+                        <input type="text" id="categorySearch" placeholder="Search categories..." autocomplete="off">
+                        <div class="dropdown-options" id="categoryOptions"></div>
+                    </div>
+                    <input type="hidden" id="categoryFilter" value="">
+                </div>
+
+                <!-- SLA Filter -->
+                <div class="filter-group searchable sla-filter-group">
+                    <label>SLA Status</label>
+                    <div class="searchable-dropdown" id="slaDropdown">
+                        <input type="text" id="slaSearch" placeholder="All" autocomplete="off" readonly>
+                        <div class="dropdown-options" id="slaOptions"></div>
+                    </div>
+                </div>
+
+                <!-- Search -->
+                <div class="filter-group search-group">
+                    <label>Search</label>
+                    <input type="text" id="searchInput" class="filter-input" placeholder="Ticket ID or keyword...">
+                </div>
+
+                <!-- Reset -->
+                <div class="filter-group">
+                    <label>&nbsp;</label>
+                    <button id="resetFilters" class="btn btn-secondary">Reset Filters</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Metric Cards -->
+        <section class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-icon">🎫</div>
+                <div class="metric-content">
+                    <span class="metric-value" id="totalTickets">-</span>
+                    <span class="metric-label">Total Tickets</span>
+                </div>
+            </div>
+            <div class="metric-card success">
+                <div class="metric-icon">✓</div>
+                <div class="metric-content">
+                    <span class="metric-value" id="slaMet">-</span>
+                    <span class="metric-label">SLA Met <span class="metric-count" id="slaMetCount"></span></span>
+                </div>
+            </div>
+            <div class="metric-card danger">
+                <div class="metric-icon">✗</div>
+                <div class="metric-content">
+                    <span class="metric-value" id="slaMissed">-</span>
+                    <span class="metric-label">SLA Missed <span class="metric-count" id="slaMissedCount"></span></span>
+                </div>
+            </div>
+            <div class="metric-card info">
+                <div class="metric-icon">⏱</div>
+                <div class="metric-content">
+                    <span class="metric-value" id="avgResolution">-</span>
+                    <span class="metric-label">Avg Resolution</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Row 1: 50-50 layout -->
+        <section class="charts-grid-50">
+            <div class="chart-card">
+                <h3>Daily Ticket Volume</h3>
+                <canvas id="dailyChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Team Distribution</h3>
+                <div class="team-dist-wrap">
+                    <div class="team-dist-chart">
+                        <canvas id="teamChart"></canvas>
+                    </div>
+                    <div class="team-dist-list" id="teamDistList"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Row 2: Top 10 Handlers + Category Distribution (50-50) -->
+        <section class="charts-grid-50">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Top 10 Handlers</h3>
+                    <button class="btn-link" id="seeAllHandlers">See All Handlers →</button>
+                </div>
+                <canvas id="handlerChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Ticket Category Distribution</h3>
+                    <button class="btn-link" id="seeAllCategories">See All Categories →</button>
+                </div>
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Charts Row 3: 3-column layout -->
+        <section class="charts-grid-3">
+            <div class="chart-card">
+                <h3>SLA Breakdown</h3>
+                <div id="slaChartContainer">
+                    <canvas id="slaChart"></canvas>
+                </div>
+                <div class="chart-legend-note" id="slaNaNote" style="display: none;">
+                    <span class="legend-tooltip"
+                        title="Tickets escalated to different teams - SLA not applicable for forwarded tickets">ℹ️ N/A =
+                        Forwarded tickets (hover for details)</span>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Product Type Distribution</h3>
+                <canvas id="productTypeChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Avg Resolution: Work vs Non-Work</h3>
+                    <div class="unit-toggle" id="avgResUnitToggle">
+                        <button class="unit-btn" data-unit="min">Min</button>
+                        <button class="unit-btn active" data-unit="hour">Hour</button>
+                        <button class="unit-btn" data-unit="day">Day</button>
+                    </div>
+                </div>
+                <canvas id="avgResChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Charts Row 4: Standalone Agent SLA Performance -->
+        <section class="charts-grid-full">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Agent SLA Performance</h3>
+                </div>
+                <div class="agent-sla-table-container" id="agentSlaContainer">
+                    <table class="agent-sla-table agent-sla-compact" id="agentSlaTable">
+                        <thead>
+                            <tr>
+                                <th>Agent</th>
+                                <th>Total</th>
+                                <th>Met</th>
+                                <th>Missed</th>
+                                <th>SLA %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agentSlaBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Row 4: Full width -->
+        <section class="charts-grid-full">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Team SLA Performance & Avg Resolution Time</h3>
+                    <div class="header-right">
+                        <div class="mini-legend" id="teamSlaMiniLegend"></div>
+                        <div class="unit-toggle" id="slaUnitToggle">
+                            <button class="unit-btn" data-unit="min">Min</button>
+                            <button class="unit-btn active" data-unit="hour">Hour</button>
+                            <button class="unit-btn" data-unit="day">Day</button>
+                        </div>
+                    </div>
+                </div>
+                <canvas id="teamSlaChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Data Table -->
+        <section class="table-section">
+            <div class="table-header">
+                <h3>Ticket Details</h3>
+                <div class="table-actions">
+                    <select id="pageSize" class="filter-select">
+                        <option value="25">25 per page</option>
+                        <option value="50">50 per page</option>
+                        <option value="100">100 per page</option>
+                    </select>
+                    <button id="exportCsv" class="btn-export">
+                        <span>📥 Export CSV</span>
+                    </button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="ticketTable">
+                    <thead>
+                        <tr>
+                            <th data-sort="date">Date ↕</th>
+                            <th data-sort="ticket_id">Ticket ID ↕</th>
+                            <th data-sort="ticket_handler_agent_name">Handler ↕</th>
+                            <th data-sort="current_team">Team ↕</th>
+                            <th data-sort="resolution_time">Resolution Time ↕</th>
+                            <th data-sort="sla">SLA ↕</th>
+                            <th data-sort="issue_category">Category ↕</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="7" class="loading">Loading data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                <button id="prevPage" class="btn btn-sm" disabled>← Previous</button>
+                <span id="pageInfo">Page 1</span>
+                <button id="nextPage" class="btn btn-sm">Next →</button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Ticket Detail Modal -->
+    <div id="ticketModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Ticket Details</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body">
+                <!-- Ticket details will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- All Handlers Modal -->
+    <div id="handlersModal" class="modal">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header">
+                <h2>All Handlers Performance</h2>
+                <button class="modal-close" onclick="closeHandlersModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="handlers-pagination">
+                    <button id="handlersPrev" class="btn btn-secondary">← Previous</button>
+                    <span id="handlersPageInfo">Page 1 of 1</span>
+                    <button id="handlersNext" class="btn btn-secondary">Next →</button>
+                </div>
+                <div id="handlersTableContainer" class="handlers-table-container">
+                    <!-- Handler rows will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Categories Modal -->
+    <div id="categoriesModal" class="modal">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header">
+                <h2>All Ticket Categories</h2>
+                <button class="modal-close" onclick="closeCategoriesModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="handlers-pagination">
+                    <button id="categoriesPrev" class="btn btn-secondary">← Previous</button>
+                    <span id="categoriesPageInfo">Page 1 of 1</span>
+                    <button id="categoriesNext" class="btn btn-secondary">Next →</button>
+                </div>
+                <div id="categoriesTableContainer" class="handlers-table-container">
+                    <!-- Category rows will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
