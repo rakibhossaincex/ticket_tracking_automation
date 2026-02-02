@@ -184,8 +184,11 @@ body {
 .filter-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
+    /* Changed back to wrap to ensure it doesn't break on small screens, but we will manage widths */
+    gap: 12px;
     align-items: flex-end;
+    overflow: visible;
+    /* CRITICAL: Ensure dropdowns are not clipped */
 }
 
 .filter-group {
@@ -205,14 +208,14 @@ body {
 .filter-select,
 .date-picker-trigger,
 .searchable-dropdown input {
-    height: 42px;
-    padding: 0 14px;
+    height: 40px;
+    padding: 0 12px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
-    font-size: 0.9rem;
-    min-width: 170px;
+    font-size: 0.85rem;
+    min-width: 120px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -226,14 +229,43 @@ body {
 }
 
 .filter-input:focus,
-.filter-select:focus {
+.filter-select:focus,
+.filter-active {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    background: rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+    border-width: 1.5px;
+}
+
+.filter-active::placeholder,
+.filter-active {
+    color: #fff !important;
+    font-weight: 600;
 }
 
 .search-group .filter-input {
-    min-width: 200px;
+    min-width: 150px;
+}
+
+.sla-filter-group .searchable-dropdown input {
+    min-width: 100px;
+}
+
+#resetFilters {
+    white-space: nowrap;
+    padding: 0 20px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+.filter-group.searchable {
+    flex: 1 1 140px;
+    min-width: 120px;
+}
+
+.date-filter-container {
+    flex: 0 0 160px;
 }
 
 /* Metric Cards */

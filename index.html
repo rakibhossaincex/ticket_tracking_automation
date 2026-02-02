@@ -101,13 +101,12 @@
                 </div>
 
                 <!-- SLA Filter -->
-                <div class="filter-group">
+                <div class="filter-group searchable sla-filter-group">
                     <label>SLA Status</label>
-                    <select id="slaFilter" class="filter-select">
-                        <option value="">All</option>
-                        <option value="Met">Met</option>
-                        <option value="Missed">Missed</option>
-                    </select>
+                    <div class="searchable-dropdown" id="slaDropdown">
+                        <input type="text" id="slaSearch" placeholder="All" autocomplete="off" readonly>
+                        <div class="dropdown-options" id="slaOptions"></div>
+                    </div>
                 </div>
 
                 <!-- Search -->
@@ -212,8 +211,8 @@
                 <div class="chart-header">
                     <h3>Avg Resolution: Work vs Non-Work</h3>
                     <div class="unit-toggle" id="avgResUnitToggle">
-                        <button class="unit-btn active" data-unit="min">Min</button>
-                        <button class="unit-btn" data-unit="hour">Hour</button>
+                        <button class="unit-btn" data-unit="min">Min</button>
+                        <button class="unit-btn active" data-unit="hour">Hour</button>
                         <button class="unit-btn" data-unit="day">Day</button>
                     </div>
                 </div>
@@ -253,8 +252,8 @@
                     <div class="header-right">
                         <div class="mini-legend" id="teamSlaMiniLegend"></div>
                         <div class="unit-toggle" id="slaUnitToggle">
-                            <button class="unit-btn active" data-unit="min">Min</button>
-                            <button class="unit-btn" data-unit="hour">Hour</button>
+                            <button class="unit-btn" data-unit="min">Min</button>
+                            <button class="unit-btn active" data-unit="hour">Hour</button>
                             <button class="unit-btn" data-unit="day">Day</button>
                         </div>
                     </div>

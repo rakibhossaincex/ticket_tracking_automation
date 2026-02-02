@@ -24,6 +24,8 @@ let sortDirection = 'desc';
 // Multi-select states
 const selectedAgents = new Set();
 const selectedTeams = new Set();
+const selectedSla = new Set();
+const selectedCategories = new Set();
 
 const dropdownRegistry = new Set();
 
@@ -39,23 +41,25 @@ const filters = {
     to: null,     // ISO string (end of day)
     agents: selectedAgents,
     teams: selectedTeams,
-    categories: new Set(),
-    sla: '',
+    categories: selectedCategories,
+    sla: selectedSla,
     search: '',
-    durationUnit: 'min' // min, hour, day
+    durationUnit: 'hour' // min, hour, day
 };
 
 const uiUnits = {
-    teamSla: 'min',
-    avgRes: 'min'
+    teamSla: 'hour',
+    avgRes: 'hour'
 };
 
 // CANONICAL SLA CALCULATION
 function calculateSlaStats(tickets) {
     let met = 0, missed = 0, na = 0;
     for (const t of tickets) {
-        if (t.sla === 'Met') met++;
-        else if (t.sla === 'Missed') missed++;
+        // Use ticket_sla_status (new) or fall back to sla (old)
+        const status = t.ticket_sla_status || t.sla;
+        if (status === 'Met') met++;
+        else if (status === 'Missed') missed++;
         else na++;
     }
     const total = met + missed + na;
@@ -270,7 +274,6 @@ const elements = {
     cancelDates: document.getElementById('cancelDates'),
     agentFilter: document.getElementById('agentFilter'),
     teamFilter: document.getElementById('teamFilter'),
-    slaFilter: document.getElementById('slaFilter'),
     searchInput: document.getElementById('searchInput'),
     resetFilters: document.getElementById('resetFilters'),
     totalTickets: document.getElementById('totalTickets'),
@@ -301,8 +304,11 @@ async function init() {
     // Initialize custom date picker
     initCustomDatePicker();
 
+    // Initialize custom searchable dropdowns
+    // Static SLA options
+    initSearchableDropdown('sla', ['Met', 'Missed', 'N/A'], 'All Statuses');
+
     // Event Listeners for searchable dropdowns
-    elements.slaFilter.addEventListener('change', applyFilters);
     elements.searchInput.addEventListener('input', debounce(applyFilters, 300));
     elements.resetFilters.addEventListener('click', resetFilters);
 
@@ -422,8 +428,9 @@ async function loadData() {
             if (filters.categories.size > 0) {
                 query = query.in('issue_category', Array.from(filters.categories));
             }
-            if (filters.sla) {
-                query = query.eq('sla', filters.sla);
+            if (filters.sla && filters.sla.size > 0) {
+                const slaVals = Array.from(filters.sla).join(',');
+                query = query.or(`ticket_sla_status.in.(${slaVals}),sla.in.(${slaVals})`);
             }
 
             const { data, error } = await query;
@@ -495,7 +502,7 @@ function populateFilters() {
 function initSearchableDropdown(type, options, placeholder) {
     const searchInput = document.getElementById(`${type}Search`);
     const optionsContainer = document.getElementById(`${type}Options`);
-    const selectionSet = type === 'agent' ? selectedAgents : (type === 'team' ? selectedTeams : filters.categories);
+    const selectionSet = type === 'agent' ? selectedAgents : (type === 'team' ? selectedTeams : (type === 'sla' ? selectedSla : selectedCategories));
 
     // Render all options
     function renderOptions(filter = '') {
@@ -546,6 +553,7 @@ function initSearchableDropdown(type, options, placeholder) {
                 }
 
                 renderOptions(searchInput.value);
+                updateFilterUI();
                 applyFilters();
             });
         });
@@ -581,6 +589,33 @@ function initSearchableDropdown(type, options, placeholder) {
 
     // Initial render
     renderOptions();
+    updateFilterUI();
+}
+
+function updateFilterUI() {
+    // 1. Searchable dropdowns (Agent, Team, Category, SLA)
+    ['agent', 'team', 'category', 'sla'].forEach(type => {
+        const input = document.getElementById(`${type}Search`);
+        const selectionSet = (type === 'agent') ? selectedAgents :
+            (type === 'team') ? selectedTeams :
+                (type === 'sla') ? selectedSla : selectedCategories;
+        if (input) {
+            if (selectionSet.size > 0) {
+                input.classList.add('filter-active');
+            } else {
+                input.classList.remove('filter-active');
+            }
+        }
+    });
+
+    // 2. Search Input
+    if (elements.searchInput) {
+        if (elements.searchInput.value) {
+            elements.searchInput.classList.add('filter-active');
+        } else {
+            elements.searchInput.classList.remove('filter-active');
+        }
+    }
 }
 
 // ============================================
@@ -589,9 +624,9 @@ function initSearchableDropdown(type, options, placeholder) {
 
 function applyFilters() {
     // Sync UI to global filter state
-    filters.sla = elements.slaFilter.value;
     filters.search = elements.searchInput.value;
 
+    updateFilterUI();
     currentPage = 1;
     loadData();
 }
@@ -601,18 +636,22 @@ function resetFilters() {
     filters.agents.clear();
     filters.teams.clear();
     filters.categories.clear();
+    filters.sla.clear();
 
     // Reset DOM inputs
-    ['agent', 'team', 'category'].forEach(type => {
+    ['agent', 'team', 'category', 'sla'].forEach(type => {
         const input = document.getElementById(`${type}Search`);
         if (input) {
             input.value = '';
-            input.placeholder = `Search ${type === 'agent' ? 'agents' : type + 's'}...`;
+            input.placeholder = (type === 'sla') ? 'All Statuses' :
+                (type === 'agent') ? 'Search agents...' :
+                    (type === 'category') ? 'Search categories...' : `Search ${type}s...`;
         }
     });
 
-    elements.slaFilter.value = '';
     elements.searchInput.value = '';
+
+    updateFilterUI();
 
     // Reset date picker to default (All time)
     setQuickDateRange('all');
@@ -1025,7 +1064,7 @@ function initCharts() {
             plugins: {
                 legend: {
                     display: true,
-                    position: 'right',
+                    position: 'bottom',
                     labels: {
                         color: '#a0a0b0',
                         usePointStyle: true,
@@ -1133,6 +1172,9 @@ function updateCharts() {
     handlerChart.options.scales.x.suggestedMax = handlerNiceMax || 10;
     handlerChart.update();
 
+    // Set global data for modals
+    window.allHandlersData = Object.entries(handlerDataMap).sort((a, b) => b[1] - a[1]);
+
     // 5. Team SLA Performance & Avg Resolution
     updateTeamSlaChartOnly();
 
@@ -1155,6 +1197,9 @@ function updateCharts() {
     const catNiceMax = Math.ceil((catMax + catHeadroom) / 10) * 10;
     categoryChart.options.scales.x.suggestedMax = catNiceMax || 10;
     categoryChart.update();
+
+    // Set global data for modals
+    window.allCategoriesData = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
 
     // 7. Product Type Distribution
     const ptMap = {};
@@ -1219,31 +1264,32 @@ function updateAgentTable() {
         if (!agentSlaData[a]) agentSlaData[a] = { total: 0, met: 0, missed: 0, na: 0 };
         agentSlaData[a].total++;
 
-        // AGENT SLA LOGIC: agent_handle_time vs current_team threshold
-        let handleTime = parseFloat(t.agent_handle_time);
-        if (handleTime > 10000) handleTime = handleTime / 60; // Sanity: convert seconds if value is huge
+        // AGENT SLA PERFORMANCE: Use the agent_sla_status column directly
+        const status = t.agent_sla_status;
 
-        const team = t.current_team;
-        const threshold = TEAM_SLA_MINUTES[team];
-
-        if (isNaN(handleTime) || !threshold) {
-            agentSlaData[a].na++;
-        } else if (handleTime <= threshold) {
+        if (status === 'Met') {
             agentSlaData[a].met++;
-        } else {
+        } else if (status === 'Missed') {
             agentSlaData[a].missed++;
+        } else {
+            agentSlaData[a].na++;
         }
     });
 
-    const sortedAgents = Object.keys(agentSlaData).sort((a, b) => agentSlaData[b].total - agentSlaData[a].total).slice(0, 20);
+    const sortedAgents = Object.keys(agentSlaData)
+        .map(name => {
+            const d = agentSlaData[name];
+            const totalSla = d.met + d.missed; // Percentage should be based on tickets with an actual Met/Missed status
+            const pct = totalSla ? Math.round((d.met / totalSla) * 100) : 0;
+            return { name, ...d, pct };
+        })
+        .sort((a, b) => b.total - a.total) // Still sorting by volume primarily, or could sort by b.pct - a.pct
+        .slice(0, 20);
 
     if (elements.agentSlaBody) {
-        elements.agentSlaBody.innerHTML = sortedAgents.map(a => {
-            const d = agentSlaData[a];
-            const totalSla = d.met + d.missed + d.na;
-            const pct = totalSla ? Math.round((d.met / totalSla) * 100) : 0;
-            const cls = pct >= 90 ? 'sla-good' : (pct >= 75 ? 'sla-warning' : 'sla-poor');
-            return `<tr><td>${a}</td><td>${d.total}</td><td>${d.met}</td><td>${d.missed}</td><td class="${cls}">${pct}%</td></tr>`;
+        elements.agentSlaBody.innerHTML = sortedAgents.map(d => {
+            const cls = d.pct >= 90 ? 'sla-good' : (d.pct >= 75 ? 'sla-warning' : 'sla-poor');
+            return `<tr><td>${d.name}</td><td>${d.total}</td><td>${d.met}</td><td>${d.missed}</td><td class="${cls}">${d.pct}%</td></tr>`;
         }).join('');
     }
 }
@@ -1265,8 +1311,11 @@ function updateTeamSlaChartOnly() {
         const team = t.current_team;
         if (!team) return;
         if (!teamStats[team]) teamStats[team] = { met: 0, missed: 0, na: 0, resMins: [] };
-        if (t.sla === 'Met') teamStats[team].met++;
-        else if (t.sla === 'Missed') teamStats[team].missed++;
+
+        // Use ticket_sla_status
+        const status = t.ticket_sla_status || t.sla;
+        if (status === 'Met') teamStats[team].met++;
+        else if (status === 'Missed') teamStats[team].missed++;
         else teamStats[team].na++;
 
         const m = parseResolutionTime(t.resolution_time);
@@ -1364,17 +1413,22 @@ function renderTable() {
     if (pageData.length === 0) {
         elements.tableBody.innerHTML = '<tr><td colspan="7" class="loading">No tickets found</td></tr>';
     } else {
-        elements.tableBody.innerHTML = pageData.map((ticket, index) => `
+        elements.tableBody.innerHTML = pageData.map((ticket, index) => {
+            const displaySla = ticket.ticket_sla_status || ticket.sla || '-';
+            const slaClass = displaySla !== '-' ? displaySla.toLowerCase() : 'na';
+
+            return `
             <tr class="clickable-row" data-index="${start + index}">
                 <td>${ticket.date || '-'}</td>
                 <td>${ticket.ticket_id || '-'}</td>
                 <td>${ticket.ticket_handler_agent_name || '-'}</td>
                 <td>${ticket.current_team || '-'}</td>
                 <td>${ticket.resolution_time || '-'}</td>
-                <td>${ticket.sla ? `<span class="sla-badge sla-${ticket.sla.toLowerCase()}">${ticket.sla}</span>` : '-'}</td>
+                <td><span class="sla-badge sla-${slaClass}">${displaySla}</span></td>
                 <td>${ticket.issue_category || '-'}</td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
 
         // Add click handlers to rows
         elements.tableBody.querySelectorAll('.clickable-row').forEach((row, idx) => {
@@ -1413,9 +1467,9 @@ function exportToCsv() {
         t.ticket_handler_agent_name,
         t.current_team,
         t.resolution_time,
-        t.sla,
+        t.ticket_sla_status || t.sla,
         t.issue_category,
-        `"${(t.description_last_ticket_note || '').replace(/"/g, '""')}"`
+        `"${(t.description_last_ticket_note || "").replace(/"/g, '""')}"`
     ]);
 
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -1451,7 +1505,8 @@ const fieldLabels = {
     ticket_handler_agent_name: 'Handler',
     current_team: 'Team',
     resolution_time: 'Resolution Time',
-    sla: 'SLA Status',
+    ticket_sla_status: 'Ticket SLA Status',
+    agent_sla_status: 'Agent SLA Status',
     issue_category: 'Issue Category',
     description_last_ticket_note: 'Description'
 };
@@ -1467,7 +1522,8 @@ function showTicketDetails(ticket) {
         'ticket_handler_agent_name',
         'current_team',
         'resolution_time',
-        'sla',
+        'ticket_sla_status',
+        'agent_sla_status',
         'issue_category',
         'description_last_ticket_note'
     ];
@@ -1484,7 +1540,7 @@ function showTicketDetails(ticket) {
             let valueClass = 'detail-value';
 
             // Special formatting for SLA
-            if (field === 'sla') {
+            if (field === 'sla' || field === 'ticket_sla_status' || field === 'agent_sla_status') {
                 valueClass += value === 'Met' ? ' sla-met' : (value === 'Missed' ? ' sla-missed' : '');
             }
 
