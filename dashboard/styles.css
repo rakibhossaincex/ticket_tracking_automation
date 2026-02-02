@@ -198,10 +198,10 @@ body {
 }
 
 .filter-group label {
-    font-size: 0.68rem;
-    /* Smaller labels */
+    font-size: 0.85rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.5px;
     color: var(--text-secondary);
 }
 
