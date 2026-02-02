@@ -1,0 +1,766 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "mode": "runOnceForEachItem",
+                "jsCode": "// ALL TEAM TICKET LOG - Team-filtered ticket tracking\n// Date range: Tickets RESOLVED in the last 5 days\n\n// Dynamic: Calculate 5 days ago from now\nconst FIVE_DAYS_SECONDS = 5 * 24 * 60 * 60;\nconst NOW_UNIX = Math.floor(Date.now() / 1000);\nconst START_UNIX = NOW_UNIX - FIVE_DAYS_SECONDS;\n\n// TEAM NAMES TO TRACK (for Yes/No columns)\nconst TRACKED_TEAMS = [\n  \"Pro Solutions Task Force\",\n  \"CEx Reversal\",\n  \"Ticket Dependencies\",\n  \"Payments and Treasury\",\n  \"GB Email Communication\",\n  \"Tech Team\",\n  \"Business Operations\",\n  \"Platform Operations\",\n  \"Case Resolution\"\n];\n\nconst SLA_THRESHOLD_SECONDS = 24 * 60 * 60;\n\nfunction stripHtml(html) {\n  if (!html) return \"\";\n  return String(html)\n    .replace(/<br\\s*\\/?>/gi, \"\\n\")\n    .replace(/<\\/p>/gi, \"\\n\")\n    .replace(/<[^>]+>/g, \" \")\n    .replace(/\\s+/g, \" \")\n    .trim();\n}\n\nfunction toISODate(unixSeconds) {\n  const n = (typeof unixSeconds === \"number\") ? unixSeconds : parseInt(unixSeconds, 10);\n  if (!n || Number.isNaN(n)) return \"\";\n  const gmt6Epoch = (n + 21600) * 1000;\n  return new Date(gmt6Epoch).toISOString().slice(0, 10);\n}\n\nfunction norm(s) { return (s || \"\").toString().trim().toLowerCase(); }\n\nfunction getAuthor(part) {\n  const a = part?.author || part?.created_by || part?.creator || {};\n  return {\n    id: a?.id ? String(a.id) : \"\",\n    name: a?.name || \"\",\n    email: a?.email || \"\",\n    type: a?.type || \"\"\n  };\n}\n\nfunction formatDuration(seconds) {\n  if (!seconds || seconds < 0) return \"\";\n  const days = Math.floor(seconds / 86400);\n  const hours = Math.floor((seconds % 86400) / 3600);\n  const minutes = Math.floor((seconds % 3600) / 60);\n  let result = \"\";\n  if (days > 0) result += days + \"d \";\n  if (hours > 0) result += hours + \"h \";\n  if (minutes > 0 || result === \"\") result += minutes + \"m\";\n  return result.trim();\n}\n\nconst ticket = $json || {};\n\nconst ticketDisplayId = String(ticket.ticket_id || ticket.id || \"\");\nconst ticketState = norm(ticket.ticket_state || ticket.state || \"\");\nconst ticketStateLabel = ticket.ticket_state_internal_label || ticket.ticket_state_external_label || ticket.ticket_state || \"\";\nconst isResolved = (ticketState === \"resolved\" || ticketState === \"closed\");\n\nlet issueCategory = \"\";\nif (ticket.ticket_type && ticket.ticket_type.name) {\n  issueCategory = ticket.ticket_type.name;\n} else if (ticket.custom_attributes && ticket.custom_attributes.ticket_type) {\n  issueCategory = ticket.custom_attributes.ticket_type;\n}\nif (!issueCategory) {\n  const titleRaw = ticket?.ticket_attributes?._default_title_ || ticket?.title || ticket?.subject || \"\";\n  issueCategory = stripHtml(titleRaw);\n}\n\nconst contact = (ticket?.contacts?.contacts && ticket.contacts.contacts[0]) || (Array.isArray(ticket?.contacts) ? ticket.contacts[0] : null);\nconst contactName = contact?.name || \"\";\nconst contactEmail = contact?.email || \"\";\n\nlet parts = ticket.ticket_parts || [];\nif (!Array.isArray(parts)) {\n  const tp = ticket.ticket_parts || {};\n  parts = Array.isArray(tp.ticket_parts) ? tp.ticket_parts : (Array.isArray(tp.data) ? tp.data : []);\n}\nparts.sort((a, b) => (a?.created_at || 0) - (b?.created_at || 0));\n\nconst ticketCreatedAt = ticket.created_at || 0;\n\nlet resolvedAt = 0;\nlet resolverFromCloseEvent = \"\";\n\nif (isResolved && ticket.state_updated_at && ticket.state_updated_at > 0) {\n  resolvedAt = ticket.state_updated_at;\n}\n\nif (!resolvedAt) {\n  for (const p of parts) {\n    const currentState = norm(p?.ticket_state || p?.ticket_state_internal_label || \"\");\n    const previousState = norm(p?.previous_ticket_state || \"\");\n    const partCreatedAt = p.created_at || 0;\n    \n    const isResolvedState = currentState.includes(\"resolved\") || currentState.includes(\"closed\");\n    const wasNotResolvedBefore = previousState && !previousState.includes(\"resolved\") && !previousState.includes(\"closed\");\n    \n    if (isResolvedState && (wasNotResolvedBefore || !previousState)) {\n      if (partCreatedAt > resolvedAt) {\n        resolvedAt = partCreatedAt;\n        const au = getAuthor(p);\n        if (au.type === \"admin\" && au.name) {\n          resolverFromCloseEvent = au.name;\n        }\n      }\n    }\n    \n    const partType = norm(p?.part_type || p?.event_type || p?.type || \"\");\n    if (partType === \"close\" || partType === \"ticket_state_updated\" || \n        partType.includes(\"resolved\") || partType.includes(\"closed\")) {\n      if (isResolvedState && partCreatedAt > resolvedAt) {\n        resolvedAt = partCreatedAt;\n        const au = getAuthor(p);\n        if (au.type === \"admin\" && au.name) {\n          resolverFromCloseEvent = au.name;\n        }\n      }\n    }\n  }\n}\n\nif (!resolvedAt && isResolved) {\n  resolvedAt = ticket.created_at || 0;\n}\n\nconst resolutionTimeSeconds = (resolvedAt && ticketCreatedAt && resolvedAt > ticketCreatedAt) ? (resolvedAt - ticketCreatedAt) : 0;\nconst resolutionTime = formatDuration(resolutionTimeSeconds);\n\n// Filter: resolved within last 5 days\nconst resolvedAfterStart = resolvedAt >= START_UNIX;\nconst resolvedDateStr = toISODate(resolvedAt);\n\nlet creatorName = \"\";\nlet creatorEmail = \"\";\nconst firstAdminPart = parts.find(p => getAuthor(p).type === \"admin\");\nif (firstAdminPart) {\n  const au = getAuthor(firstAdminPart);\n  creatorName = au.name;\n  creatorEmail = au.email;\n} else {\n  creatorName = contactName;\n  creatorEmail = contactEmail;\n}\n\nconst teamsVisited = new Set();\nlet allAssignmentTimes = [];\nlet lastAdminNoteText = \"\";\nlet lastAssignedAdmin = \"\";\n\nconst currentTeamId = String(ticket.team_assignee_id || \"\");\n\nconst sd = $getWorkflowStaticData('global');\nconst teamIdToName = sd.teamIdToName || {};\n\nconst currentTeamName = teamIdToName[currentTeamId] || \"\";\nif (currentTeamName) {\n  teamsVisited.add(currentTeamName);\n}\n\nfor (const p of parts) {\n  const au = getAuthor(p);\n  const body = stripHtml(p?.body || p?.comment || p?.note || \"\");\n  const partType = norm(p?.part_type || p?.event_type || p?.type || \"\");\n  const partCreatedAt = p.created_at || 0;\n  \n  if (norm(au.type) === \"admin\" && body) lastAdminNoteText = body;\n  \n  if (partType.includes(\"assign\") || partType === \"team_assignment\" || \n      partType === \"assignment\" || partType === \"assigned\") {\n    const assignedTo = p.assigned_to || p.assignee || {};\n    \n    if (assignedTo.type === \"team\") {\n      const teamId = String(assignedTo.id || \"\");\n      const teamName = assignedTo.name || teamIdToName[teamId] || \"\";\n      if (teamName) {\n        teamsVisited.add(teamName);\n      }\n    }\n    \n    if (partCreatedAt > 0) {\n      allAssignmentTimes.push(partCreatedAt);\n    }\n    if (assignedTo.type === \"admin\" && assignedTo.name) {\n      lastAssignedAdmin = assignedTo.name;\n    }\n  }\n}\n\nlet slaStatus = \"\";\nconst uniqueTeamsCount = teamsVisited.size;\n\nif (uniqueTeamsCount <= 1) {\n  if (resolutionTimeSeconds > 0) {\n    slaStatus = resolutionTimeSeconds < SLA_THRESHOLD_SECONDS ? \"Met\" : \"Missed\";\n  }\n}\n\nlet handlerName = \"\";\nif (resolverFromCloseEvent) {\n  handlerName = resolverFromCloseEvent;\n} else if (lastAssignedAdmin) {\n  handlerName = lastAssignedAdmin;\n}\n\nlet agentHandleTime = \"\";\nif (resolvedAt) {\n  const validAssignments = allAssignmentTimes\n    .filter(t => t > 0 && t <= resolvedAt)\n    .sort((a, b) => b - a);\n  \n  if (validAssignments.length > 0) {\n    const lastAssignmentTime = validAssignments[0];\n    agentHandleTime = formatDuration(resolvedAt - lastAssignmentTime);\n  } else if (ticketCreatedAt > 0) {\n    agentHandleTime = formatDuration(resolvedAt - ticketCreatedAt);\n  }\n}\n\n// Qualify if resolved AND within last 5 days\nconst qualifies = isResolved && resolvedAfterStart;\n\nconst date = resolvedDateStr;\nconst uniqueId = `${date}|${ticketDisplayId}`;\n\nconst teamColumns = {};\nfor (const teamName of TRACKED_TEAMS) {\n  teamColumns[teamName] = teamsVisited.has(teamName) ? \"Yes\" : \"\";\n}\n\nreturn {\n  json: {\n    \"_filter_passed\": qualifies,\n    \"Unique ID\": uniqueId,\n    \"Date\": date,\n    \"Ticket ID\": ticketDisplayId,\n    \"Ticket Creator Agent Name\": creatorName,\n    \"Ticket Handler Agent Name\": handlerName,\n    \"Resolution Time\": resolutionTime,\n    \"Agent Handle Time\": agentHandleTime,\n    \"Ticket Status\": ticketStateLabel,\n    \"SLA\": slaStatus,\n    \"Current Team\": currentTeamName,\n    \"Issue Category\": issueCategory,\n    \"Description/Last Ticket Note\": lastAdminNoteText,\n    \"Forwarded?\": \"\",\n    \"Forwarded To\": \"\",\n    \"Ticket Creator's Email\": creatorEmail,\n    \"Pro Solutions Task Force\": teamColumns[\"Pro Solutions Task Force\"],\n    \"CEx Reversal\": teamColumns[\"CEx Reversal\"],\n    \"Ticket Dependencies\": teamColumns[\"Ticket Dependencies\"],\n    \"Payments and Treasury\": teamColumns[\"Payments and Treasury\"],\n    \"GB Email Communication\": teamColumns[\"GB Email Communication\"],\n    \"Tech Team\": teamColumns[\"Tech Team\"],\n    \"Business Operations\": teamColumns[\"Business Operations\"],\n    \"Platform Operations\": teamColumns[\"Platform Operations\"],\n    \"Case Resolution\": teamColumns[\"Case Resolution\"]\n  }\n};\n"
+            },
+            "id": "8a0e1888-a3bd-41d2-a4f1-9367e389d31f",
+            "name": "Transform Ticket Data1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -560,
+                16
+            ]
+        },
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "minutes"
+                        }
+                    ]
+                }
+            },
+            "id": "38b9ee7e-9df6-499f-af64-904faeadb29e",
+            "name": "Schedule Trigger (Every 5 Minutes)",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.2,
+            "position": [
+                -2320,
+                208
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Gate: Only process if we're past Jan 1, 2026 00:00:00 GMT+6\n// Jan 1, 2026 00:00:00 GMT+6 = Dec 31, 2025 18:00:00 UTC = 1767204000\nconst START_UNIX = 1767204000;\nconst nowUnix = Math.floor(Date.now() / 1000);\n\nif (nowUnix < START_UNIX) {\n  return [];\n}\n\nconst sd = $getWorkflowStaticData('global');\nif (typeof sd.last_sync !== 'number') sd.last_sync = START_UNIX;\n\nreturn [{\n  json: {\n    start_unix: START_UNIX,\n    now_unix: nowUnix,\n    last_sync: sd.last_sync\n  }\n}];\n"
+            },
+            "id": "f3bd898f-33be-4305-b35b-c3b18fd4a4c6",
+            "name": "Gate: Start on 2026-01-",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -2096,
+                208
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.intercom.io/teams",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "7d651b7e-7cf5-4cd1-a064-deb8374c4e53",
+            "name": "List Teams",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -1856,
+                208
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "NP8zyf9bSfqaxMj0",
+                    "name": "Bearer Auth account 3"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Build team maps: id->name and name(lower)->id\n// STORE IN STATIC DATA so Transform Ticket Data can access without $() reference\n\nfunction ensureObj(x){\n  if (!x) return {};\n  if (typeof x === 'string'){\n    try { return JSON.parse(x); } catch { return {}; }\n  }\n  return x;\n}\n\nconst resp = ensureObj($json);\nconst teams = resp.teams || resp.data || [];\n\nconst idToName = {};\nconst nameToId = {};\n\nfor (const t of teams) {\n  if (!t || !t.id) continue;\n  const name = (t.name || '').trim();\n  idToName[t.id] = name;\n  if (name) nameToId[name.toLowerCase()] = t.id;\n}\n\n// Store in workflow static data for later access\nconst sd = $getWorkflowStaticData('global');\nsd.teamIdToName = idToName;\nsd.teamNameToId = nameToId;\n\nreturn [{\n  json: {\n    idToName,\n    nameToId\n  }\n}];\n"
+            },
+            "id": "0670d16f-09bc-4ee0-bccb-b163e67982d0",
+            "name": "Build Team Map",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1632,
+                208
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Build the Intercom /tickets/search request body.\n// Filter by RESOLVED STATUS + SPECIFIC TEAMS\n// Date range: Last 5 days to NOW\n// Sort: ascending (oldest first)\n\n// Dynamic: Calculate 5 days ago from now\nconst FIVE_DAYS_SECONDS = 5 * 24 * 60 * 60;\nconst NOW_UNIX = Math.floor(Date.now() / 1000);\nconst START_UNIX = NOW_UNIX - FIVE_DAYS_SECONDS;\n\n// TEAM IDs to filter by (10 teams total)\nconst TEAM_IDS = [\n  \"8314220\",  // Business Operations 1\n  \"9644821\",  // Business Operations 2\n  \"6681977\",  // Tech Team\n  \"6533520\",  // Platform Operations\n  \"6681962\",  // Payments and Treasury\n  \"6921111\",  // GB Email Communication\n  \"6547584\",  // Case Resolution\n  \"6682031\",  // Pro Solutions Task Force / Ticket Dependencies / CEx Reversal\n  \"6661069\",  // Pro Solutions Task Force / Ticket Dependencies / CEx Reversal\n  \"8009000\"   // Pro Solutions Task Force / Ticket Dependencies / CEx Reversal\n];\n\n// Build team filter conditions (OR)\nconst teamConditions = TEAM_IDS.map(id => ({\n  field: \"team_assignee_id\",\n  operator: \"=\",\n  value: id\n}));\n\n// State filter conditions (OR)\nconst stateConditions = [\n  { field: \"state\", operator: \"=\", value: \"resolved\" },\n  { field: \"state\", operator: \"=\", value: \"closed\" }\n];\n\n// Combined query: Last 5 days to now\nconst queryConditions = [\n  { field: \"updated_at\", operator: \">=\", value: START_UNIX },\n  { field: \"updated_at\", operator: \"<=\", value: NOW_UNIX },\n  { operator: \"OR\", value: stateConditions },\n  { operator: \"OR\", value: teamConditions }\n];\n\nreturn [{\n  json: {\n    body: {\n      query: {\n        operator: \"AND\",\n        value: queryConditions\n      },\n      pagination: {\n        per_page: 100\n      },\n      sort: {\n        field: \"updated_at\",\n        order: \"ascending\"\n      }\n    },\n    meta: {\n      start_unix: START_UNIX,\n      end_unix: NOW_UNIX,\n      mode: \"LAST_5_DAYS\",\n      teams: TEAM_IDS,\n      states: [\"resolved\", \"closed\"]\n    }\n  }\n}];"
+            },
+            "id": "c09c4ef9-e264-40f7-912f-4ad75723a9aa",
+            "name": "Build HTTP Body",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1424,
+                208
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.intercom.io/tickets/search",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ $json.body }}",
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "faa94885-b6fe-4945-b035-fd33db629f9e",
+            "name": "Search Tickets",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -1216,
+                208
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "3aJKqmWSz1EBLLuh",
+                    "name": "Bearer Auth account 4"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Extract tickets from Intercom's tickets array\n// Pre-filter tickets resolved before the last 5 days to save API calls\n\n// Dynamic: Calculate 5 days ago from now\nconst FIVE_DAYS_SECONDS = 5 * 24 * 60 * 60;\nconst NOW_UNIX = Math.floor(Date.now() / 1000);\nconst START_UNIX = NOW_UNIX - FIVE_DAYS_SECONDS;\n\nconst input = $json || {};\nconst tickets = input.tickets || [];\n\nconst results = [];\n\nfor (const ticket of tickets) {\n  const ticketId = ticket.id;\n  const stateUpdatedAt = ticket.state_updated_at || 0;\n  const state = (ticket.state || \"\").toLowerCase();\n  const isResolved = state === \"resolved\" || state === \"closed\";\n  \n  // Skip if resolved before the last 5 days (and we have the data)\n  if (isResolved && stateUpdatedAt > 0 && stateUpdatedAt < START_UNIX) {\n    continue;\n  }\n  \n  if (ticketId) {\n    results.push({\n      json: {\n        \"id\": String(ticketId),\n        \"ticket_id\": String(ticket.ticket_id || \"\"),\n        \"state\": ticket.state || \"\",\n        \"state_updated_at\": stateUpdatedAt,\n        \"team_assignee_id\": ticket.team_assignee_id || \"\"\n      }\n    });\n  }\n}\n\nreturn results;"
+            },
+            "id": "d3fb0084-7381-459a-a644-5067d95763ea",
+            "name": "Extract Tickets1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -976,
+                16
+            ]
+        },
+        {
+            "parameters": {
+                "url": "=https://api.intercom.io/tickets/{{$json[\"id\"]}}",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "f3d0a25a-ea09-432c-a845-da8867ebd6bc",
+            "name": "Get Ticket Details",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -768,
+                16
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "Wb6mK3xsTXEujIUR",
+                    "name": "Bearer Auth account 5"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json[\"_filter_passed\"] }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "a4fc8419-2e2d-4580-8c2c-c7e4c0568095",
+            "name": "Filter Passed?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                -336,
+                16
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "appendOrUpdate",
+                "documentId": {
+                    "__rl": true,
+                    "value": "1giSta89Iz8B0xnKCCZn-rB6HbF3G7jH9nS1nHtz-Ess",
+                    "mode": "list",
+                    "cachedResultName": "All Team Ticket Log",
+                    "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1giSta89Iz8B0xnKCCZn-rB6HbF3G7jH9nS1nHtz-Ess/edit?gid=0#gid=0"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "gid=0",
+                    "mode": "list",
+                    "cachedResultName": "Sheet1",
+                    "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1giSta89Iz8B0xnKCCZn-rB6HbF3G7jH9nS1nHtz-Ess/edit#gid=0"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "Unique ID": "={{ $json[\"Unique ID\"] }}",
+                        "Date": "={{ $json[\"Date\"] }}",
+                        "Ticket ID": "={{ $json[\"Ticket ID\"] }}",
+                        "Ticket Creator Agent Name": "={{ $json[\"Ticket Creator Agent Name\"] }}",
+                        "Ticket Handler Agent Name": "={{ $json[\"Ticket Handler Agent Name\"] }}",
+                        "Resolution Time": "={{ $json[\"Resolution Time\"] }}",
+                        "Agent Handle Time": "={{ $json[\"Agent Handle Time\"] }}",
+                        "Ticket Status": "={{ $json[\"Ticket Status\"] }}",
+                        "SLA": "={{ $json[\"SLA\"] }}",
+                        "Current Team": "={{ $json['Current Team'] }}",
+                        "Issue Category": "={{ $json[\"Issue Category\"] }}",
+                        "Description/Last Ticket Note": "={{ $json[\"Description/Last Ticket Note\"] }}",
+                        "Forwarded?": "={{ $json[\"Forwarded?\"] }}",
+                        "Forwarded To": "={{ $json[\"Forwarded To\"] }}",
+                        "Ticket Creator's Email": "={{ $json[\"Ticket Creator's Email\"] }}",
+                        "Pro Solutions Task Force": "={{ $json['Pro Solutions Task Force'] }}",
+                        "CEx Reversal": "={{ $json['CEx Reversal'] }}",
+                        "Ticket Dependencies": "={{ $json['Ticket Dependencies'] }}",
+                        "Payments and Treasury": "={{ $json['Payments and Treasury'] }}",
+                        "GB Email Communication": "={{ $json[\"GB Email Communication\"] }}",
+                        "Tech Team": "={{ $json['Tech Team'] }}",
+                        "Business Operations": "={{ $json['Business Operations'] }}",
+                        "Platform Operations": "={{ $json['Platform Operations'] }}",
+                        "Case Resolution": "={{ $json['Case Resolution'] }}"
+                    },
+                    "matchingColumns": [
+                        "Unique ID"
+                    ],
+                    "schema": [
+                        {
+                            "id": "Unique ID",
+                            "displayName": "Unique ID",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Date",
+                            "displayName": "Date",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Ticket ID",
+                            "displayName": "Ticket ID",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Ticket Creator Agent Name",
+                            "displayName": "Ticket Creator Agent Name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Ticket Handler Agent Name",
+                            "displayName": "Ticket Handler Agent Name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Resolution Time",
+                            "displayName": "Resolution Time",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Agent Handle Time",
+                            "displayName": "Agent Handle Time",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Ticket Status",
+                            "displayName": "Ticket Status",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "SLA",
+                            "displayName": "SLA",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Current Team",
+                            "displayName": "Current Team",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Issue Category",
+                            "displayName": "Issue Category",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Description/Last Ticket Note",
+                            "displayName": "Description/Last Ticket Note",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Forwarded?",
+                            "displayName": "Forwarded?",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Forwarded To",
+                            "displayName": "Forwarded To",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Ticket Creator's Email",
+                            "displayName": "Ticket Creator's Email",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Pro Solutions Task Force",
+                            "displayName": "Pro Solutions Task Force",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "CEx Reversal",
+                            "displayName": "CEx Reversal",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Ticket Dependencies",
+                            "displayName": "Ticket Dependencies",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Payments and Treasury",
+                            "displayName": "Payments and Treasury",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "GB Email Communication",
+                            "displayName": "GB Email Communication",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Tech Team",
+                            "displayName": "Tech Team",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Business Operations",
+                            "displayName": "Business Operations",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Platform Operations",
+                            "displayName": "Platform Operations",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Case Resolution",
+                            "displayName": "Case Resolution",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                },
+                "options": {}
+            },
+            "id": "0d23b39b-ac13-407d-b5e6-71ad2fa79284",
+            "name": "Append or update row in sheet",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.7,
+            "position": [
+                192,
+                0
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "sMkPXGv2wf4LoWLd",
+                    "name": "Google Sheets account 11"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Pagination handler - simple pagination without circuit breaker\n\nfunction clone(o) {\n  return JSON.parse(JSON.stringify(o));\n}\n\nfunction ensureObj(x) {\n  if (!x) return {};\n  if (typeof x === 'string') {\n    try { return JSON.parse(x); } catch { return {}; }\n  }\n  return x;\n}\n\nconst resp = ensureObj($json);\nconst pageNow = resp?.pages?.page ?? 1;\nconst nextCursor = resp?.pages?.next?.starting_after ?? null;\n\nconst baseBody = clone($(\"Build HTTP Body\").first().json.body);\nbaseBody.pagination = baseBody.pagination || {};\nbaseBody.pagination.per_page = 100;\nif (nextCursor) baseBody.pagination.starting_after = nextCursor;\nelse delete baseBody.pagination.starting_after;\n\nconst MAX_PAGES = 2000;\nconst hasNext = Boolean(nextCursor) && pageNow < MAX_PAGES;\n\nreturn [{\n  json: {\n    body: baseBody,\n    has_next: hasNext,\n    page_now: pageNow\n  }\n}];\n"
+            },
+            "id": "ef747b0f-3ade-4109-843f-547b913a50e1",
+            "name": "Paginate: Prepare next body",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -976,
+                208
+            ]
+        },
+        {
+            "parameters": {},
+            "id": "71f86e18-2e2e-44be-aee9-53dc58cd3317",
+            "name": "Merge",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3.2,
+            "position": [
+                -640,
+                256
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "ef34f615-6b27-4dd4-8386-54f5cc41d193",
+                            "leftValue": "={{ $json.has_next }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "9a6adaae-72a7-45f8-9a82-b2a7f378951c",
+            "name": "If (Has Next Page?)",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                -96,
+                256
+            ]
+        },
+        {
+            "parameters": {
+                "amount": 20
+            },
+            "type": "n8n-nodes-base.wait",
+            "typeVersion": 1.1,
+            "position": [
+                -48,
+                0
+            ],
+            "id": "276262a4-ae3c-4d8a-818c-edd80ecf1ad7",
+            "name": "Wait",
+            "webhookId": "4fd68b2e-26a7-4f57-9811-f6a00c18fe00"
+        }
+    ],
+    "connections": {
+        "Transform Ticket Data1": {
+            "main": [
+                [
+                    {
+                        "node": "Filter Passed?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Schedule Trigger (Every 5 Minutes)": {
+            "main": [
+                [
+                    {
+                        "node": "Gate: Start on 2026-01-",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Gate: Start on 2026-01-": {
+            "main": [
+                [
+                    {
+                        "node": "List Teams",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "List Teams": {
+            "main": [
+                [
+                    {
+                        "node": "Build Team Map",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Team Map": {
+            "main": [
+                [
+                    {
+                        "node": "Build HTTP Body",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build HTTP Body": {
+            "main": [
+                [
+                    {
+                        "node": "Search Tickets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Search Tickets": {
+            "main": [
+                [
+                    {
+                        "node": "Paginate: Prepare next body",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Extract Tickets1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Tickets1": {
+            "main": [
+                [
+                    {
+                        "node": "Get Ticket Details",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Ticket Details": {
+            "main": [
+                [
+                    {
+                        "node": "Transform Ticket Data1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Filter Passed?": {
+            "main": [
+                [
+                    {
+                        "node": "Wait",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Append or update row in sheet": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Paginate: Prepare next body": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge": {
+            "main": [
+                [
+                    {
+                        "node": "If (Has Next Page?)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If (Has Next Page?)": {
+            "main": [
+                [
+                    {
+                        "node": "Search Tickets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Wait": {
+            "main": [
+                [
+                    {
+                        "node": "Append or update row in sheet",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "meta": {
+        "instanceId": "b076ee236eeb0f1e0d5cf68bfef91d2e6b976d3c37b7dea8eeb4131cf958e05f"
+    }
+}

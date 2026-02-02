@@ -1,0 +1,477 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "mode": "runOnceForEachItem",
+                "jsCode": "// ALL TEAM TICKET LOG - Team-filtered ticket tracking\n// Date range: Tickets RESOLVED on or after Jan 15, 2026 (GMT+6)\n\n// Jan 15, 2026 00:00:00 GMT+6 = 1768413600\nconst START_UNIX = 1768413600;\n\n// TEAM NAMES TO TRACK (for Yes/No columns)\nconst TRACKED_TEAMS = [\n  \"Pro Solutions Task Force\",\n  \"CEx Reversal\",\n  \"Ticket Dependencies\",\n  \"Payments and Treasury\",\n  \"GB Email Communication\",\n  \"Tech Team\",\n  \"Business Operations\",\n  \"Platform Operations\",\n  \"Case Resolution\"\n];\n\nconst SLA_THRESHOLD_SECONDS = 24 * 60 * 60;\n\nfunction stripHtml(html) {\n  if (!html) return \"\";\n  return String(html)\n    .replace(/<br\\s*\\/?>/gi, \"\\n\")\n    .replace(/<\\/p>/gi, \"\\n\")\n    .replace(/<[^>]+>/g, \" \")\n    .replace(/\\s+/g, \" \")\n    .trim();\n}\n\nfunction toISODate(unixSeconds) {\n  const n = (typeof unixSeconds === \"number\") ? unixSeconds : parseInt(unixSeconds, 10);\n  if (!n || Number.isNaN(n)) return \"\";\n  const gmt6Epoch = (n + 21600) * 1000;\n  return new Date(gmt6Epoch).toISOString().slice(0, 10);\n}\n\nfunction norm(s) { return (s || \"\").toString().trim().toLowerCase(); }\n\nfunction getAuthor(part) {\n  const a = part?.author || part?.created_by || part?.creator || {};\n  return {\n    id: a?.id ? String(a.id) : \"\",\n    name: a?.name || \"\",\n    email: a?.email || \"\",\n    type: a?.type || \"\"\n  };\n}\n\nfunction formatDuration(seconds) {\n  if (!seconds || seconds < 0) return \"\";\n  const days = Math.floor(seconds / 86400);\n  const hours = Math.floor((seconds % 86400) / 3600);\n  const minutes = Math.floor((seconds % 3600) / 60);\n  let result = \"\";\n  if (days > 0) result += days + \"d \";\n  if (hours > 0) result += hours + \"h \";\n  if (minutes > 0 || result === \"\") result += minutes + \"m\";\n  return result.trim();\n}\n\nconst ticket = $json || {};\n\nconst ticketDisplayId = String(ticket.ticket_id || ticket.id || \"\");\nconst ticketState = norm(ticket.ticket_state || ticket.state || \"\");\nconst ticketStateLabel = ticket.ticket_state_internal_label || ticket.ticket_state_external_label || ticket.ticket_state || \"\";\nconst isResolved = (ticketState === \"resolved\" || ticketState === \"closed\");\n\nlet issueCategory = \"\";\nif (ticket.ticket_type && ticket.ticket_type.name) {\n  issueCategory = ticket.ticket_type.name;\n} else if (ticket.custom_attributes && ticket.custom_attributes.ticket_type) {\n  issueCategory = ticket.custom_attributes.ticket_type;\n}\nif (!issueCategory) {\n  const titleRaw = ticket?.ticket_attributes?._default_title_ || ticket?.title || ticket?.subject || \"\";\n  issueCategory = stripHtml(titleRaw);\n}\n\nconst contact = (ticket?.contacts?.contacts && ticket.contacts.contacts[0]) || (Array.isArray(ticket?.contacts) ? ticket.contacts[0] : null);\nconst contactName = contact?.name || \"\";\nconst contactEmail = contact?.email || \"\";\n\nlet parts = ticket.ticket_parts || [];\nif (!Array.isArray(parts)) {\n  const tp = ticket.ticket_parts || {};\n  parts = Array.isArray(tp.ticket_parts) ? tp.ticket_parts : (Array.isArray(tp.data) ? tp.data : []);\n}\nparts.sort((a, b) => (a?.created_at || 0) - (b?.created_at || 0));\n\nconst ticketCreatedAt = ticket.created_at || 0;\n\nlet resolvedAt = 0;\nlet resolverFromCloseEvent = \"\";\n\nif (isResolved && ticket.state_updated_at && ticket.state_updated_at > 0) {\n  resolvedAt = ticket.state_updated_at;\n}\n\nif (!resolvedAt) {\n  for (const p of parts) {\n    const currentState = norm(p?.ticket_state || p?.ticket_state_internal_label || \"\");\n    const previousState = norm(p?.previous_ticket_state || \"\");\n    const partCreatedAt = p.created_at || 0;\n    \n    const isResolvedState = currentState.includes(\"resolved\") || currentState.includes(\"closed\");\n    const wasNotResolvedBefore = previousState && !previousState.includes(\"resolved\") && !previousState.includes(\"closed\");\n    \n    if (isResolvedState && (wasNotResolvedBefore || !previousState)) {\n      if (partCreatedAt > resolvedAt) {\n        resolvedAt = partCreatedAt;\n        const au = getAuthor(p);\n        if (au.type === \"admin\" && au.name) {\n          resolverFromCloseEvent = au.name;\n        }\n      }\n    }\n    \n    const partType = norm(p?.part_type || p?.event_type || p?.type || \"\");\n    if (partType === \"close\" || partType === \"ticket_state_updated\" || \n        partType.includes(\"resolved\") || partType.includes(\"closed\")) {\n      if (isResolvedState && partCreatedAt > resolvedAt) {\n        resolvedAt = partCreatedAt;\n        const au = getAuthor(p);\n        if (au.type === \"admin\" && au.name) {\n          resolverFromCloseEvent = au.name;\n        }\n      }\n    }\n  }\n}\n\nif (!resolvedAt && isResolved) {\n  resolvedAt = ticket.created_at || 0;\n}\n\nconst resolutionTimeSeconds = (resolvedAt && ticketCreatedAt && resolvedAt > ticketCreatedAt) ? (resolvedAt - ticketCreatedAt) : 0;\nconst resolutionTime = formatDuration(resolutionTimeSeconds);\n\n// Filter: resolved on or after Jan 15, 2026\nconst resolvedAfterStart = resolvedAt >= START_UNIX;\nconst resolvedDateStr = toISODate(resolvedAt);\n\nlet creatorName = \"\";\nlet creatorEmail = \"\";\nconst firstAdminPart = parts.find(p => getAuthor(p).type === \"admin\");\nif (firstAdminPart) {\n  const au = getAuthor(firstAdminPart);\n  creatorName = au.name;\n  creatorEmail = au.email;\n} else {\n  creatorName = contactName;\n  creatorEmail = contactEmail;\n}\n\nconst teamsVisited = new Set();\nlet allAssignmentTimes = [];\nlet lastAdminNoteText = \"\";\nlet lastAssignedAdmin = \"\";\n\nconst currentTeamId = String(ticket.team_assignee_id || \"\");\n\nconst sd = $getWorkflowStaticData('global');\nconst teamIdToName = sd.teamIdToName || {};\n\nconst currentTeamName = teamIdToName[currentTeamId] || \"\";\nif (currentTeamName) {\n  teamsVisited.add(currentTeamName);\n}\n\nfor (const p of parts) {\n  const au = getAuthor(p);\n  const body = stripHtml(p?.body || p?.comment || p?.note || \"\");\n  const partType = norm(p?.part_type || p?.event_type || p?.type || \"\");\n  const partCreatedAt = p.created_at || 0;\n  \n  if (norm(au.type) === \"admin\" && body) lastAdminNoteText = body;\n  \n  if (partType.includes(\"assign\") || partType === \"team_assignment\" || \n      partType === \"assignment\" || partType === \"assigned\") {\n    const assignedTo = p.assigned_to || p.assignee || {};\n    \n    if (assignedTo.type === \"team\") {\n      const teamId = String(assignedTo.id || \"\");\n      const teamName = assignedTo.name || teamIdToName[teamId] || \"\";\n      if (teamName) {\n        teamsVisited.add(teamName);\n      }\n    }\n    \n    if (partCreatedAt > 0) {\n      allAssignmentTimes.push(partCreatedAt);\n    }\n    if (assignedTo.type === \"admin\" && assignedTo.name) {\n      lastAssignedAdmin = assignedTo.name;\n    }\n  }\n}\n\nlet slaStatus = \"\";\nconst uniqueTeamsCount = teamsVisited.size;\n\nif (uniqueTeamsCount <= 1) {\n  if (resolutionTimeSeconds > 0) {\n    slaStatus = resolutionTimeSeconds < SLA_THRESHOLD_SECONDS ? \"Met\" : \"Missed\";\n  }\n}\n\nlet handlerName = \"\";\nif (resolverFromCloseEvent) {\n  handlerName = resolverFromCloseEvent;\n} else if (lastAssignedAdmin) {\n  handlerName = lastAssignedAdmin;\n}\n\nlet agentHandleTime = \"\";\nif (resolvedAt) {\n  const validAssignments = allAssignmentTimes\n    .filter(t => t > 0 && t <= resolvedAt)\n    .sort((a, b) => b - a);\n  \n  if (validAssignments.length > 0) {\n    const lastAssignmentTime = validAssignments[0];\n    agentHandleTime = formatDuration(resolvedAt - lastAssignmentTime);\n  } else if (ticketCreatedAt > 0) {\n    agentHandleTime = formatDuration(resolvedAt - ticketCreatedAt);\n  }\n}\n\n// Qualify if resolved AND on or after Jan 15, 2026\nconst qualifies = isResolved && resolvedAfterStart;\n\nconst date = resolvedDateStr;\nconst uniqueId = `${date}|${ticketDisplayId}`;\n\nconst teamColumns = {};\nfor (const teamName of TRACKED_TEAMS) {\n  teamColumns[teamName] = teamsVisited.has(teamName) ? \"Yes\" : \"\";\n}\n\n// OUTPUT with Supabase-compatible column names (snake_case)\nreturn {\n  json: {\n    \"_filter_passed\": qualifies,\n    \"unique_id\": uniqueId,\n    \"date\": date,\n    \"ticket_id\": ticketDisplayId,\n    \"ticket_creator_agent_name\": creatorName,\n    \"ticket_handler_agent_name\": handlerName,\n    \"resolution_time\": resolutionTime,\n    \"agent_handle_time\": agentHandleTime,\n    \"ticket_status\": ticketStateLabel,\n    \"sla\": slaStatus,\n    \"current_team\": currentTeamName,\n    \"issue_category\": issueCategory,\n    \"description_last_ticket_note\": lastAdminNoteText,\n    \"forwarded\": false,\n    \"forwarded_to\": \"\",\n    \"ticket_creator_email\": creatorEmail,\n    \"pro_solutions_task_force\": teamColumns[\"Pro Solutions Task Force\"],\n    \"cex_reversal\": teamColumns[\"CEx Reversal\"],\n    \"ticket_dependencies\": teamColumns[\"Ticket Dependencies\"],\n    \"payments_and_treasury\": teamColumns[\"Payments and Treasury\"],\n    \"gb_email_communication\": teamColumns[\"GB Email Communication\"],\n    \"tech_team\": teamColumns[\"Tech Team\"],\n    \"business_operations\": teamColumns[\"Business Operations\"],\n    \"platform_operations\": teamColumns[\"Platform Operations\"],\n    \"case_resolution\": teamColumns[\"Case Resolution\"]\n  }\n};\n"
+            },
+            "id": "e4d4fe08-8ad4-4ff9-a355-24630897fad8",
+            "name": "Transform Ticket Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                144,
+                -16
+            ]
+        },
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "hours",
+                            "hoursInterval": 2
+                        }
+                    ]
+                }
+            },
+            "id": "19387fb9-4d1a-485b-be2f-076b0315d32f",
+            "name": "Schedule Trigger (Every 5 Minutes)1",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.2,
+            "position": [
+                -1600,
+                176
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Gate: Only process if we're past Jan 1, 2026 00:00:00 GMT+6\n// Jan 1, 2026 00:00:00 GMT+6 = Dec 31, 2025 18:00:00 UTC = 1767204000\nconst START_UNIX = 1767204000;\nconst nowUnix = Math.floor(Date.now() / 1000);\n\nif (nowUnix < START_UNIX) {\n  return [];\n}\n\nconst sd = $getWorkflowStaticData('global');\nif (typeof sd.last_sync !== 'number') sd.last_sync = START_UNIX;\n\nreturn [{\n  json: {\n    start_unix: START_UNIX,\n    now_unix: nowUnix,\n    last_sync: sd.last_sync\n  }\n}];\n"
+            },
+            "id": "1c1e9a26-5b78-4991-85d1-79a066c729da",
+            "name": "Gate: Start on 2026-01-1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1376,
+                176
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.intercom.io/teams",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "db55cc9b-5874-4e45-b788-f72ba3bfb2dd",
+            "name": "List Teams1",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -1136,
+                176
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "NP8zyf9bSfqaxMj0",
+                    "name": "Bearer Auth account 3"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Build team maps: id->name and name(lower)->id\n// STORE IN STATIC DATA so Transform Ticket Data can access without $() reference\n\nfunction ensureObj(x){\n  if (!x) return {};\n  if (typeof x === 'string'){\n    try { return JSON.parse(x); } catch { return {}; }\n  }\n  return x;\n}\n\nconst resp = ensureObj($json);\nconst teams = resp.teams || resp.data || [];\n\nconst idToName = {};\nconst nameToId = {};\n\nfor (const t of teams) {\n  if (!t || !t.id) continue;\n  const name = (t.name || '').trim();\n  idToName[t.id] = name;\n  if (name) nameToId[name.toLowerCase()] = t.id;\n}\n\n// Store in workflow static data for later access\nconst sd = $getWorkflowStaticData('global');\nsd.teamIdToName = idToName;\nsd.teamNameToId = nameToId;\n\nreturn [{\n  json: {\n    idToName,\n    nameToId\n  }\n}];\n"
+            },
+            "id": "0b3fbeb5-52e2-494f-924f-234a512aedad",
+            "name": "Build Team Map1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -912,
+                176
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Build the Intercom /tickets/search request body.\n// Filter by RESOLVED STATUS + SPECIFIC TEAMS\n// Date range: Jan 15, 2026 (GMT+6) to NOW\n// Sort: ascending (oldest first)\n\n// Jan 15, 2026 00:00:00 GMT+6 = 1768413600\nconst START_UNIX = 1768413600;  // Jan 15, 2026 00:00:00 GMT+6\nconst NOW_UNIX = Math.floor(Date.now() / 1000);\n\n// TEAM IDs to filter by (10 teams total)\nconst TEAM_IDS = [\n  \"8314220\",  // Business Operations 1\n  \"9644821\",  // Business Operations 2\n  \"6681977\",  // Tech Team\n  \"6533520\",  // Platform Operations\n  \"6681962\",  // Payments and Treasury\n  \"6921111\",  // GB Email Communication\n  \"6547584\",  // Case Resolution\n  \"6682031\",  // Pro Solutions Task Force / Ticket Dependencies / CEx Reversal\n  \"6661069\",  // Pro Solutions Task Force / Ticket Dependencies / CEx Reversal\n  \"8009000\"   // Pro Solutions Task Force / Ticket Dependencies / CEx Reversal\n];\n\n// Build team filter conditions (OR)\nconst teamConditions = TEAM_IDS.map(id => ({\n  field: \"team_assignee_id\",\n  operator: \"=\",\n  value: id\n}));\n\n// State filter conditions (OR)\nconst stateConditions = [\n  { field: \"state\", operator: \"=\", value: \"resolved\" },\n  { field: \"state\", operator: \"=\", value: \"closed\" }\n];\n\n// Combined query: Jan 15, 2026 to now\nconst queryConditions = [\n  { field: \"updated_at\", operator: \">=\", value: START_UNIX },\n  { field: \"updated_at\", operator: \"<=\", value: NOW_UNIX },\n  { operator: \"OR\", value: stateConditions },\n  { operator: \"OR\", value: teamConditions }\n];\n\nreturn [{\n  json: {\n    body: {\n      query: {\n        operator: \"AND\",\n        value: queryConditions\n      },\n      pagination: {\n        per_page: 100\n      },\n      sort: {\n        field: \"updated_at\",\n        order: \"ascending\"\n      }\n    },\n    meta: {\n      start_unix: START_UNIX,\n      end_unix: NOW_UNIX,\n      mode: \"JAN_15_2026_TO_NOW\",\n      teams: TEAM_IDS,\n      states: [\"resolved\", \"closed\"]\n    }\n  }\n}];"
+            },
+            "id": "03296d1b-028b-4c05-9c54-1eee3756f520",
+            "name": "Build HTTP Body1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -704,
+                176
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.intercom.io/tickets/search",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ $json.body }}",
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "9648c904-2105-4807-aea2-079ea5b5c3d6",
+            "name": "Search Tickets1",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -496,
+                176
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "3aJKqmWSz1EBLLuh",
+                    "name": "Bearer Auth account 4"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Extract tickets from Intercom's tickets array\n// Pre-filter tickets resolved before Jan 15, 2026 to save API calls\n\n// Jan 15, 2026 00:00:00 GMT+6 = 1768413600\nconst START_UNIX = 1768413600;\n\nconst input = $json || {};\nconst tickets = input.tickets || [];\n\nconst results = [];\n\nfor (const ticket of tickets) {\n  const ticketId = ticket.id;\n  const stateUpdatedAt = ticket.state_updated_at || 0;\n  const state = (ticket.state || \"\").toLowerCase();\n  const isResolved = state === \"resolved\" || state === \"closed\";\n  \n  // Skip if resolved before Jan 15, 2026 (and we have the data)\n  if (isResolved && stateUpdatedAt > 0 && stateUpdatedAt < START_UNIX) {\n    continue;\n  }\n  \n  if (ticketId) {\n    results.push({\n      json: {\n        \"id\": String(ticketId),\n        \"ticket_id\": String(ticket.ticket_id || \"\"),\n        \"state\": ticket.state || \"\",\n        \"state_updated_at\": stateUpdatedAt,\n        \"team_assignee_id\": ticket.team_assignee_id || \"\"\n      }\n    });\n  }\n}\n\nreturn results;"
+            },
+            "id": "a33da956-d9f8-447f-a6d9-dd73a02b4950",
+            "name": "Extract Tickets",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -256,
+                -16
+            ]
+        },
+        {
+            "parameters": {
+                "url": "=https://api.intercom.io/tickets/{{$json[\"id\"]}}",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "474e6a40-a346-4491-849a-7f6cb55ab57b",
+            "name": "Get Ticket Details1",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -48,
+                -16
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "Wb6mK3xsTXEujIUR",
+                    "name": "Bearer Auth account 5"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json[\"_filter_passed\"] }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "692e8c01-9c5d-4e11-aa8c-d5793b4f4b02",
+            "name": "Filter Passed?1",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                384,
+                -16
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Pagination handler - simple pagination without circuit breaker\n\nfunction clone(o) {\n  return JSON.parse(JSON.stringify(o));\n}\n\nfunction ensureObj(x) {\n  if (!x) return {};\n  if (typeof x === 'string') {\n    try { return JSON.parse(x); } catch { return {}; }\n  }\n  return x;\n}\n\nconst resp = ensureObj($json);\nconst pageNow = resp?.pages?.page ?? 1;\nconst nextCursor = resp?.pages?.next?.starting_after ?? null;\n\nconst baseBody = clone($(\"Build HTTP Body1\").first().json.body);\nbaseBody.pagination = baseBody.pagination || {};\nbaseBody.pagination.per_page = 100;\nif (nextCursor) baseBody.pagination.starting_after = nextCursor;\nelse delete baseBody.pagination.starting_after;\n\nconst MAX_PAGES = 2000;\nconst hasNext = Boolean(nextCursor) && pageNow < MAX_PAGES;\n\nreturn [{\n  json: {\n    body: baseBody,\n    has_next: hasNext,\n    page_now: pageNow\n  }\n}];\n"
+            },
+            "id": "da892ec6-c36d-4c7f-b051-13220de299ee",
+            "name": "Paginate: Prepare next body1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -256,
+                176
+            ]
+        },
+        {
+            "parameters": {},
+            "id": "924674c1-c37a-4cee-83b5-32da6ca5052c",
+            "name": "Merge1",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3.2,
+            "position": [
+                80,
+                224
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "ef34f615-6b27-4dd4-8386-54f5cc41d193",
+                            "leftValue": "={{ $json.has_next }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "27842a94-6a87-4c3d-b5cc-5b2aa43d024c",
+            "name": "If (Has Next Page?)1",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                624,
+                224
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "executeQuery",
+                "query": "INSERT INTO ticket_logs (\n  unique_id,\n  date,\n  ticket_id,\n  ticket_creator_agent_name,\n  ticket_handler_agent_name,\n  resolution_time,\n  agent_handle_time,\n  ticket_status,\n  sla,\n  current_team,\n  issue_category,\n  description_last_ticket_note,\n  forwarded,\n  forwarded_to,\n  ticket_creator_email,\n  pro_solutions_task_force,\n  cex_reversal,\n  ticket_dependencies,\n  payments_and_treasury,\n  gb_email_communication,\n  tech_team,\n  business_operations,\n  platform_operations,\n  case_resolution,\n  _filter_passed\n)\nVALUES (\n  '{{ $json.unique_id }}',\n  '{{ $json.date }}',\n  '{{ $json.ticket_id }}',\n  '{{ $json.ticket_creator_agent_name }}',\n  '{{ $json.ticket_handler_agent_name }}',\n  '{{ $json.resolution_time }}',\n  '{{ $json.agent_handle_time }}',\n  '{{ $json.ticket_status }}',\n  '{{ $json.sla }}',\n  '{{ $json.current_team }}',\n  '{{ $json.issue_category }}',\n  '{{ $json.description_last_ticket_note }}',\n  {{ $json.forwarded }},\n  '{{ $json.forwarded_to }}',\n  '{{ $json.ticket_creator_email }}',\n  '{{ $json.pro_solutions_task_force }}',\n  '{{ $json.cex_reversal }}',\n  '{{ $json.ticket_dependencies }}',\n  '{{ $json.payments_and_treasury }}',\n  '{{ $json.gb_email_communication }}',\n  '{{ $json.tech_team }}',\n  '{{ $json.business_operations }}',\n  '{{ $json.platform_operations }}',\n  '{{ $json.case_resolution }}',\n  {{ $json._filter_passed }}\n)\nON CONFLICT (unique_id) DO NOTHING;",
+                "options": {}
+            },
+            "id": "b94b683e-56c2-482f-aff6-0efac5cbe93d",
+            "name": "Insert to Supabase (No Duplicates)",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.5,
+            "position": [
+                640,
+                -32
+            ],
+            "credentials": {
+                "postgres": {
+                    "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+                    "name": "Supabase Postgres"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Transform Ticket Data": {
+            "main": [
+                [
+                    {
+                        "node": "Filter Passed?1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Schedule Trigger (Every 5 Minutes)1": {
+            "main": [
+                [
+                    {
+                        "node": "Gate: Start on 2026-01-1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Gate: Start on 2026-01-1": {
+            "main": [
+                [
+                    {
+                        "node": "List Teams1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "List Teams1": {
+            "main": [
+                [
+                    {
+                        "node": "Build Team Map1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Team Map1": {
+            "main": [
+                [
+                    {
+                        "node": "Build HTTP Body1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build HTTP Body1": {
+            "main": [
+                [
+                    {
+                        "node": "Search Tickets1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Search Tickets1": {
+            "main": [
+                [
+                    {
+                        "node": "Paginate: Prepare next body1",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Extract Tickets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Tickets": {
+            "main": [
+                [
+                    {
+                        "node": "Get Ticket Details1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Ticket Details1": {
+            "main": [
+                [
+                    {
+                        "node": "Transform Ticket Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Filter Passed?1": {
+            "main": [
+                [
+                    {
+                        "node": "Insert to Supabase (No Duplicates)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Merge1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Paginate: Prepare next body1": {
+            "main": [
+                [
+                    {
+                        "node": "Merge1",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge1": {
+            "main": [
+                [
+                    {
+                        "node": "If (Has Next Page?)1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If (Has Next Page?)1": {
+            "main": [
+                [
+                    {
+                        "node": "Search Tickets1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Insert to Supabase (No Duplicates)": {
+            "main": [
+                [
+                    {
+                        "node": "Merge1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "meta": {
+        "instanceId": "b076ee236eeb0f1e0d5cf68bfef91d2e6b976d3c37b7dea8eeb4131cf958e05f"
+    }
+}

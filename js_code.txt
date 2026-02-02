@@ -1,0 +1,303 @@
+// ALL TEAM TICKET LOG - BULK IMPORT (JAN 15 - NOW)
+// Date range: Tickets RESOLVED starting from Jan 15, 2026
+
+const START_UNIX = 1768413600; // Jan 15, 2026 00:00:00 GMT+6
+const NOW_UNIX = Math.floor(Date.now() / 1000);
+
+const TRACKED_TEAMS = [
+  "Pro Solutions Task Force",
+  "CEx Reversal",
+  "Ticket Dependencies",
+  "Payments and Treasury",
+  "GB Email Communication",
+  "Tech Team",
+  "Business Operations",
+  "Platform Operations",
+  "Case Resolution"
+];
+
+const CEX_GROUP = ["Pro Solutions Task Force", "CEx Reversal", "Ticket Dependencies"];
+
+function getTeamCode(teamName) {
+  const tn = (teamName || "").toLowerCase();
+  if (tn.includes("pro solutions") || tn.includes("cex reversal") || tn.includes("ticket dependencies")) return "CEx";
+  if (tn.includes("business operations")) return "BO";
+  if (tn.includes("payments") || tn.includes("treasury") || tn.includes("gb email")) return "PT";
+  if (tn.includes("platform operations")) return "PO";
+  if (tn.includes("tech team")) return "TT";
+  if (tn.includes("case resolution")) return "CR";
+  return "";
+}
+
+const TEAM_WORKING_HOURS = {
+  "CEx": { start: 0, end: 24 },
+  "PT": { start: 9, end: 18 },
+  "TT": { start: 9, end: 18 },
+  "PO": { start: 8.5, end: 17.5 },
+  "CR": { start: 8.5, end: 17.5 },
+  "BO": { start: 8.5, end: 17.5 }
+};
+
+const SLA_LIMITS = {
+  "CEx": { weekdayOffice: 1, weekdayAfter: 1, weekendOffice: 1, weekendAfter: 1 },
+  "BO": { weekdayOffice: 12, weekdayAfter: 24, weekendOffice: 12, weekendAfter: 24 },
+  "PT": { weekdayOffice: 12, weekdayAfter: 12, weekendOffice: 24, weekendAfter: 24 },
+  "PO": { weekdayOffice: 3, weekdayAfter: 18, weekendOffice: 24, weekendAfter: 24 },
+  "TT": { weekdayOffice: 8, weekdayAfter: 20, weekendOffice: 72, weekendAfter: 72 },
+  "CR": { weekdayOffice: 3, weekdayAfter: 17, weekendOffice: 54, weekendAfter: 54 }
+};
+
+function stripHtml(html) {
+  if (!html) return "";
+  return String(html)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function toISODate(unixSeconds) {
+  const n = (typeof unixSeconds === "number") ? unixSeconds : parseInt(unixSeconds, 10);
+  if (!n || Number.isNaN(n)) return "";
+  const gmt6Epoch = (n + 21600) * 1000;
+  return new Date(gmt6Epoch).toISOString().slice(0, 10);
+}
+
+function norm(s) { return (s || "").toString().trim().toLowerCase(); }
+
+function getAuthor(part) {
+  const a = part?.author || part?.created_by || part?.creator || {};
+  return {
+    id: a?.id ? String(a.id) : "",
+    name: a?.name || "",
+    email: a?.email || "",
+    type: a?.type || ""
+  };
+}
+
+function formatDuration(seconds) {
+  if (!seconds || seconds < 0) return "";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  let result = "";
+  if (days > 0) result += days + "d ";
+  if (hours > 0) result += hours + "h ";
+  if (minutes > 0 || result === "") result += minutes + "m";
+  return result.trim();
+}
+
+function isWithinWorkingHours(unixTimestamp, teamCode) {
+  if (!unixTimestamp || !teamCode) return true;
+  const hours = TEAM_WORKING_HOURS[teamCode];
+  if (!hours) return true;
+  const gmt6Ms = (unixTimestamp + 21600) * 1000;
+  const date = new Date(gmt6Ms);
+  const hour = date.getUTCHours() + date.getUTCMinutes() / 60;
+  return hour >= hours.start && hour < hours.end;
+}
+
+function isWeekend(unixTimestamp) {
+  if (!unixTimestamp) return false;
+  const gmt6Ms = (unixTimestamp + 21600) * 1000;
+  const date = new Date(gmt6Ms);
+  const day = date.getUTCDay();
+  return day === 0 || day === 6;
+}
+
+function getSlaLimitHours(teamCode, isWeekendDay, isDuringOfficeHours) {
+  const limits = SLA_LIMITS[teamCode];
+  if (!limits) return 24;
+  if (isWeekendDay) {
+    return isDuringOfficeHours ? limits.weekendOffice : limits.weekendAfter;
+  } else {
+    return isDuringOfficeHours ? limits.weekdayOffice : limits.weekdayAfter;
+  }
+}
+
+const ticket = $json || {};
+const ticketDisplayId = String(ticket.ticket_id || ticket.id || "");
+const ticketState = norm(ticket.ticket_state || ticket.state || "");
+const ticketStateLabel = ticket.ticket_state_internal_label || ticket.ticket_state_external_label || ticket.ticket_state || "";
+const isResolved = (ticketState === "resolved" || ticketState === "closed");
+
+let productType = "";
+const ticketAttrs = ticket.ticket_attributes || {};
+for (const key of Object.keys(ticketAttrs)) {
+  if (key.toLowerCase().includes("product") && key.toLowerCase().includes("type")) {
+    productType = String(ticketAttrs[key] || "");
+    break;
+  }
+}
+if (!productType && ticketAttrs["Product Type"]) productType = String(ticketAttrs["Product Type"]);
+
+const ptLower = productType.toLowerCase();
+if (ptLower === "cfds" || ptLower === "cfd") {
+  productType = "CFD";
+} else if (ptLower === "futures") {
+  productType = "Futures";
+} else if (ptLower.includes("stellar") || ptLower.includes("instant")) {
+  productType = "CFD";
+}
+
+let issueCategory = "";
+if (ticket.ticket_type && ticket.ticket_type.name) {
+  issueCategory = ticket.ticket_type.name;
+} else if (ticket.custom_attributes && ticket.custom_attributes.ticket_type) {
+  issueCategory = ticket.custom_attributes.ticket_type;
+}
+if (!issueCategory) {
+  const titleRaw = ticket?.ticket_attributes?._default_title_ || ticket?.title || ticket?.subject || "";
+  issueCategory = stripHtml(titleRaw);
+}
+
+const contact = (ticket?.contacts?.contacts && ticket.contacts.contacts[0]) || (Array.isArray(ticket?.contacts) ? ticket.contacts[0] : null);
+const contactName = contact?.name || "";
+const contactEmail = contact?.email || "";
+
+let parts = ticket.ticket_parts || [];
+if (!Array.isArray(parts)) {
+  const tp = ticket.ticket_parts || {};
+  parts = Array.isArray(tp.ticket_parts) ? tp.ticket_parts : (Array.isArray(tp.data) ? tp.data : []);
+}
+parts.sort((a, b) => (a?.created_at || 0) - (b?.created_at || 0));
+
+const ticketCreatedAt = ticket.created_at || 0;
+let resolvedAt = 0;
+let resolverFromCloseEvent = "";
+
+if (isResolved && ticket.state_updated_at && ticket.state_updated_at > 0) {
+  resolvedAt = ticket.state_updated_at;
+}
+
+if (!resolvedAt) {
+  for (const p of parts) {
+    const currentState = norm(p?.ticket_state || p?.ticket_state_internal_label || "");
+    const partCreatedAt = p.created_at || 0;
+    const isResolvedState = currentState.includes("resolved") || currentState.includes("closed");
+    if (isResolvedState && partCreatedAt > resolvedAt) {
+      resolvedAt = partCreatedAt;
+      const au = getAuthor(p);
+      if (au.type === "admin" && au.name) resolverFromCloseEvent = au.name;
+    }
+  }
+}
+
+if (!resolvedAt && isResolved) resolvedAt = ticket.created_at || 0;
+
+const resolutionTimeSeconds = (resolvedAt && ticketCreatedAt && resolvedAt > ticketCreatedAt) ? (resolvedAt - ticketCreatedAt) : 0;
+const resolutionTime = formatDuration(resolutionTimeSeconds);
+const resolvedAfterStart = resolvedAt >= 1768413600;
+const resolvedDateStr = toISODate(resolvedAt);
+
+let creatorName = "";
+let creatorEmail = "";
+const firstAdminPart = parts.find(p => getAuthor(p).type === "admin");
+if (firstAdminPart) {
+  const au = getAuthor(firstAdminPart);
+  creatorName = au.name;
+  creatorEmail = au.email;
+} else {
+  creatorName = contactName;
+  creatorEmail = contactEmail;
+}
+
+const teamsVisited = new Set();
+let allAssignmentTimes = [];
+let lastAdminNoteText = "";
+let lastAssignedAdmin = "";
+const currentTeamId = String(ticket.team_assignee_id || "");
+const sd = $getWorkflowStaticData("global");
+const teamIdToName = sd.teamIdToName || {};
+const currentTeamName = teamIdToName[currentTeamId] || "";
+if (currentTeamName) teamsVisited.add(currentTeamName);
+
+for (const p of parts) {
+  const au = getAuthor(p);
+  const body = stripHtml(p?.body || p?.comment || p?.note || "");
+  const partType = norm(p?.part_type || p?.event_type || p?.type || "");
+  const partCreatedAt = p.created_at || 0;
+  if (norm(au.type) === "admin" && body) lastAdminNoteText = body;
+  if (partType.includes("assign") || partType === "team_assignment" || partType === "assignment" || partType === "assigned") {
+    const assignedTo = p.assigned_to || p.assignee || {};
+    if (assignedTo.type === "team") {
+      const teamId = String(assignedTo.id || "");
+      const teamName = assignedTo.name || teamIdToName[teamId] || "";
+      if (teamName) teamsVisited.add(teamName);
+    }
+    if (partCreatedAt > 0) allAssignmentTimes.push(partCreatedAt);
+    if (assignedTo.type === "admin" && assignedTo.name) lastAssignedAdmin = assignedTo.name;
+  }
+}
+
+let handlerName = resolverFromCloseEvent || lastAssignedAdmin || "";
+let agentHandleTime = "";
+let agentHandleTimeSeconds = 0;
+if (resolvedAt) {
+  const validAssignments = allAssignmentTimes.filter(t => t > 0 && t <= resolvedAt).sort((a, b) => b - a);
+  if (validAssignments.length > 0) {
+    agentHandleTimeSeconds = resolvedAt - validAssignments[0];
+  } else if (ticketCreatedAt > 0) {
+    agentHandleTimeSeconds = resolvedAt - ticketCreatedAt;
+  }
+  agentHandleTime = formatDuration(agentHandleTimeSeconds);
+}
+
+let slaStatus = "";
+let slaLimitHours = null;
+const uniqueTeamsCount = teamsVisited.size;
+const isPSTFtoCExReversal = (uniqueTeamsCount === 2 && teamsVisited.has("Pro Solutions Task Force") && teamsVisited.has("CEx Reversal"));
+let slaApplicable = (uniqueTeamsCount <= 1 || isPSTFtoCExReversal);
+if (!slaApplicable) slaStatus = "N/A";
+
+if (slaApplicable && agentHandleTimeSeconds > 0) {
+  const teamCode = getTeamCode(currentTeamName);
+  const isCExGroup = CEX_GROUP.some(t => norm(currentTeamName).includes(norm(t).substring(0, 10)));
+  if (isCExGroup) {
+    slaLimitHours = 1;
+  } else {
+    slaLimitHours = getSlaLimitHours(teamCode, isWeekend(ticketCreatedAt), isWithinWorkingHours(ticketCreatedAt, teamCode));
+  }
+  slaStatus = agentHandleTimeSeconds < (slaLimitHours * 3600) ? "Met" : "Missed";
+}
+
+let resolvedDuringOfficeHours = resolvedAt ? isWithinWorkingHours(resolvedAt, getTeamCode(currentTeamName)) : null;
+const qualifies = isResolved && resolvedAfterStart;
+const uniqueId = resolvedDateStr + "|" + ticketDisplayId;
+
+const teamColumns = {};
+for (const teamName of TRACKED_TEAMS) teamColumns[teamName] = teamsVisited.has(teamName) ? "Yes" : "";
+
+return {
+  json: {
+    "_filter_passed": qualifies,
+    "unique_id": uniqueId,
+    "date": resolvedDateStr,
+    "ticket_id": ticketDisplayId,
+    "ticket_creator_agent_name": creatorName,
+    "ticket_handler_agent_name": handlerName,
+    "resolution_time": resolutionTime,
+    "agent_handle_time": agentHandleTime,
+    "ticket_status": ticketStateLabel,
+    "sla": slaStatus,
+    "sla_limit_hours": slaLimitHours,
+    "product_type": productType,
+    "resolved_during_office_hours": resolvedDuringOfficeHours,
+    "current_team": currentTeamName,
+    "issue_category": issueCategory,
+    "description_last_ticket_note": lastAdminNoteText,
+    "forwarded": false,
+    "forwarded_to": "",
+    "ticket_creator_email": creatorEmail,
+    "pro_solutions_task_force": teamColumns["Pro Solutions Task Force"],
+    "cex_reversal": teamColumns["CEx Reversal"],
+    "ticket_dependencies": teamColumns["Ticket Dependencies"],
+    "payments_and_treasury": teamColumns["Payments and Treasury"],
+    "gb_email_communication": teamColumns["GB Email Communication"],
+    "tech_team": teamColumns["Tech Team"],
+    "business_operations": teamColumns["Business Operations"],
+    "platform_operations": teamColumns["Platform Operations"],
+    "case_resolution": teamColumns["Case Resolution"]
+  }
+};

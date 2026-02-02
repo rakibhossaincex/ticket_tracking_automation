@@ -1,0 +1,541 @@
+{
+    "name": "Intercom Ticket ID Collector - WORKING",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "minutes"
+                        }
+                    ]
+                }
+            },
+            "id": "216385d6-e52e-49e8-af51-e1e9751098b1",
+            "name": "Schedule Trigger (Every 5 Minutes)",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.2,
+            "position": [
+                -880,
+                48
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.intercom.io/teams",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "474510bc-f8de-411a-a14e-b95d5aa175b2",
+            "name": "List Teams",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -640,
+                48
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "NP8zyf9bSfqaxMj0",
+                    "name": "Bearer Auth account 3"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Build team maps: id->name and name(lower)->id\n\nfunction ensureObj(x){\n  if (!x) return {};\n  if (typeof x === 'string'){\n    try { return JSON.parse(x); } catch { return {}; }\n  }\n  return x;\n}\n\nconst resp = ensureObj($json);\nconst teams = resp.teams || resp.data || [];\n\nconst idToName = {};\nconst nameToId = {};\n\nfor (const t of teams) {\n  if (!t || !t.id) continue;\n  const name = (t.name || '').trim();\n  idToName[t.id] = name;\n  if (name) nameToId[name.toLowerCase()] = t.id;\n}\n\nreturn [{\n  json: {\n    idToName,\n    nameToId\n  }\n}];\n"
+            },
+            "id": "9fb2ca2b-842e-4a23-b9f9-45c3205dd3ae",
+            "name": "Build Team Map",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -400,
+                48
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Build Intercom /tickets/search request body\n// Filters: Date range (2025-12-01 to 2026-01-12) + Teams + Resolved status\n// Sort: Latest to oldest (descending by updated_at)\n\n// Date range in Unix timestamps (CORRECTED)\nconst START_DATE_UNIX = 1764547200; // 2025-12-01 00:00:00 UTC\nconst END_DATE_UNIX = 1768262399;   // 2026-01-12 23:59:59 UTC\n\n// Get Team Map\nconst teamMap = $('Build Team Map').first().json || {};\nconst nameToId = teamMap.nameToId || {};\n\nfunction norm(s) { return (s || \"\").toString().trim().toLowerCase(); }\n\n// Target Team Names\nconst TEAM_PSTF_NAME = \"Pro Solutions Task Force\";\nconst TEAM_DEPENDENCY_NAME = \"Ticket Dependencies\";\nconst TEAM_REVERSAL_NAME = \"CEx Reversal\";\n\nconst pstfTeamId = nameToId[norm(TEAM_PSTF_NAME)];\nconst depTeamId  = nameToId[norm(TEAM_DEPENDENCY_NAME)];\nconst revTeamId  = nameToId[norm(TEAM_REVERSAL_NAME)];\n\nconst targetTeamIds = [pstfTeamId, depTeamId, revTeamId].filter(Boolean);\n\n// Build team filter conditions\nconst teamConditions = targetTeamIds.map(id => ({\n  field: \"team_assignee_id\",\n  operator: \"=\",\n  value: id\n}));\n\n// Build state filter for resolved tickets\nconst stateConditions = [\n  { field: \"state\", operator: \"=\", value: \"resolved\" },\n  { field: \"state\", operator: \"=\", value: \"closed\" }\n];\n\n// Construct final query:\n// (updated_at >= START_DATE) AND (updated_at <= END_DATE) AND (team1 OR team2 OR team3) AND (resolved OR closed)\nconst queryConditions = [\n  { field: \"updated_at\", operator: \">=\", value: START_DATE_UNIX },\n  { field: \"updated_at\", operator: \"<=\", value: END_DATE_UNIX }\n];\n\n// Add team filter (OR across teams)\nif (teamConditions.length === 1) {\n  queryConditions.push(teamConditions[0]);\n} else if (teamConditions.length > 1) {\n  queryConditions.push({\n    operator: \"OR\",\n    value: teamConditions\n  });\n}\n\n// Add state filter (resolved OR closed)\nqueryConditions.push({\n  operator: \"OR\",\n  value: stateConditions\n});\n\nreturn [{\n  json: {\n    body: {\n      query: {\n        operator: \"AND\",\n        value: queryConditions\n      },\n      pagination: {\n        per_page: 150\n      },\n      sort: {\n        field: \"updated_at\",\n        order: \"desc\"\n      }\n    },\n    meta: {\n      start_date: \"2025-12-01\",\n      end_date: \"2026-01-12\",\n      target_teams: targetTeamIds,\n      states: [\"resolved\", \"closed\"],\n      sort_order: \"latest to oldest\"\n    }\n  }\n}];"
+            },
+            "id": "11f68842-d940-4ba4-8d78-1da063aeefce",
+            "name": "Build HTTP Body",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -160,
+                48
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.intercom.io/tickets/search",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ $json.body }}",
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "d3499ef4-a8e1-4d7f-b8d9-8923fc370179",
+            "name": "Search Tickets",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                80,
+                48
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "3aJKqmWSz1EBLLuh",
+                    "name": "Bearer Auth account 4"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "appendOrUpdate",
+                "documentId": {
+                    "__rl": true,
+                    "value": "1ZZ7Mp0fHanWg5bANhClwwCv0raMLaNAwGaMi1-ymxig",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "gid=0",
+                    "mode": "list",
+                    "cachedResultName": "Sheet1"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "Ticket ID": "={{ $json['Ticket ID'] }}",
+                        "Unique ID": "={{ $json['Ticket ID'] }}"
+                    },
+                    "matchingColumns": [
+                        "Ticket ID"
+                    ],
+                    "schema": [
+                        {
+                            "id": "Unique ID",
+                            "displayName": "Unique ID",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Date",
+                            "displayName": "Date",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Ticket ID",
+                            "displayName": "Ticket ID",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "Ticket Creator Agent Name",
+                            "displayName": "Ticket Creator Agent Name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Ticket Handler Agent Name",
+                            "displayName": "Ticket Handler Agent Name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Ticket Status",
+                            "displayName": "Ticket Status",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Description/Last Ticket Note",
+                            "displayName": "Description/Last Ticket Note",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Issue Category",
+                            "displayName": "Issue Category",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Dependency Cleared",
+                            "displayName": "Dependency Cleared",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Dependency No Update",
+                            "displayName": "Dependency No Update",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Forwarded?",
+                            "displayName": "Forwarded?",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Forwarded To",
+                            "displayName": "Forwarded To",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Reversal Ticket?",
+                            "displayName": "Reversal Ticket?",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Invalid?",
+                            "displayName": "Invalid?",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Reversal Reason",
+                            "displayName": "Reversal Reason",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Ticket Creator's Email",
+                            "displayName": "Ticket Creator's Email",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "Email Communication?",
+                            "displayName": "Email Communication?",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                },
+                "options": {}
+            },
+            "id": "769a0592-9e6f-498f-9f73-ceae968309f6",
+            "name": "Append to Google Sheet",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.7,
+            "position": [
+                1008,
+                -112
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "sMkPXGv2wf4LoWLd",
+                    "name": "Google Sheets account 11"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Pagination logic\n\nfunction clone(o) {\n  return JSON.parse(JSON.stringify(o));\n}\n\nfunction ensureObj(x) {\n  if (!x) return {};\n  if (typeof x === 'string') {\n    try { return JSON.parse(x); } catch { return {}; }\n  }\n  return x;\n}\n\nconst resp = ensureObj($json);\nconst pageNow = resp?.pages?.page ?? 1;\nconst nextCursor = resp?.pages?.next?.starting_after ?? null;\n\n// Clone the original page-1 body so query filters stay the same\nconst baseBody = clone($(\"Build HTTP Body\").first().json.body);\nbaseBody.pagination = baseBody.pagination || {};\nbaseBody.pagination.per_page = 150;\nif (nextCursor) baseBody.pagination.starting_after = nextCursor;\nelse delete baseBody.pagination.starting_after;\n\n// Safety cap to avoid infinite loops\nconst MAX_PAGES = 2000;\nconst hasNext = Boolean(nextCursor) && pageNow < MAX_PAGES;\n\nreturn [{\n  json: {\n    body: baseBody,\n    has_next: hasNext,\n    page_now: pageNow\n  }\n}];\n"
+            },
+            "id": "8e81e8ec-91a5-4cfe-956a-55c548477457",
+            "name": "Paginate: Prepare Next Page",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                688,
+                64
+            ]
+        },
+        {
+            "parameters": {},
+            "id": "2ea5e09f-100c-481d-ba52-7dc29fde54bc",
+            "name": "Merge",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3.2,
+            "position": [
+                1248,
+                48
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "check-has-next",
+                            "leftValue": "={{ $json.has_next }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "abb62b2a-9c17-4d05-a04f-d6b70d1aef9f",
+            "name": "Has Next Page?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                1488,
+                48
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Extract ticket_id from Intercom's tickets array\n\nconst input = $json || {};\nconst tickets = input.tickets || [];\n\n// Extract all ticket IDs\nconst results = [];\n\nfor (const ticket of tickets) {\n  const ticketId = ticket.id;\n  \n  if (ticketId) {\n    results.push({\n      json: {\n        \"Ticket ID\": String(ticketId)\n      }\n    });\n  }\n}\n\nreturn results;"
+            },
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                544,
+                -144
+            ],
+            "id": "f7251faf-9011-43d5-b6d7-1add42a0987f",
+            "name": "Extract Tickets"
+        }
+    ],
+    "connections": {
+        "Schedule Trigger (Every 5 Minutes)": {
+            "main": [
+                [
+                    {
+                        "node": "List Teams",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "List Teams": {
+            "main": [
+                [
+                    {
+                        "node": "Build Team Map",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Team Map": {
+            "main": [
+                [
+                    {
+                        "node": "Build HTTP Body",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build HTTP Body": {
+            "main": [
+                [
+                    {
+                        "node": "Search Tickets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Search Tickets": {
+            "main": [
+                [
+                    {
+                        "node": "Paginate: Prepare Next Page",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Extract Tickets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Append to Google Sheet": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Paginate: Prepare Next Page": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge": {
+            "main": [
+                [
+                    {
+                        "node": "Has Next Page?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Next Page?": {
+            "main": [
+                [
+                    {
+                        "node": "Search Tickets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Tickets": {
+            "main": [
+                [
+                    {
+                        "node": "Append to Google Sheet",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateCredsSetupCompleted": true,
+        "instanceId": "b076ee236eeb0f1e0d5cf68bfef91d2e6b976d3c37b7dea8eeb4131cf958e05f"
+    },
+    "id": "",
+    "tags": []
+}

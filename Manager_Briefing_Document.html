@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Ticket Tracking Automation System - Manager Briefing</title>
+    <style>
+        body {
+            font-family: Calibri, Arial, sans-serif;
+            margin: 40px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            color: #1a365d;
+            border-bottom: 2px solid #1a365d;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            color: #2c5282;
+            margin-top: 30px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 5px;
+        }
+
+        h3 {
+            color: #4a5568;
+        }
+
+        h4 {
+            color: #718096;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+
+        th,
+        td {
+            border: 1px solid #cbd5e0;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #edf2f7;
+            font-weight: bold;
+        }
+
+        ul,
+        ol {
+            margin: 10px 0;
+        }
+
+        li {
+            margin: 5px 0;
+        }
+
+        .code-block {
+            background-color: #f7fafc;
+            border: 1px solid #e2e8f0;
+            padding: 15px;
+            font-family: monospace;
+            white-space: pre;
+            margin: 15px 0;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid #e2e8f0;
+            margin: 25px 0;
+        }
+
+        strong {
+            color: #2d3748;
+        }
+
+        a {
+            color: #3182ce;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Ticket Tracking Automation System</h1>
+    <h2>Manager Briefing Document</h2>
+
+    <hr>
+
+    <h2>Executive Summary</h2>
+    <p>This document provides a complete overview of our automated ticket tracking and analytics system. The system
+        automatically collects resolved ticket data from Intercom, stores it in a centralized database, and presents
+        actionable insights through an interactive dashboard.</p>
+
+    <p><strong>Key Benefits:</strong></p>
+    <ul>
+        <li><strong>Automated Data Collection:</strong> No manual data entry required</li>
+        <li><strong>Real-time Analytics:</strong> Dashboard updates every 2 hours</li>
+        <li><strong>Performance Visibility:</strong> Track team and agent performance at a glance</li>
+        <li><strong>SLA Monitoring:</strong> Identify missed SLAs and resolution bottlenecks</li>
+    </ul>
+
+    <hr>
+
+    <h2>System Architecture</h2>
+
+    <div class="code-block">
+        ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+        │ Intercom │ ──► │ n8n │ ──► │ Supabase │ ──► │ Dashboard │
+        │ (Source) │ │ (Workflow) │ │ (Database) │ │ (Analytics)│
+        └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘
+    </div>
+
+    <p>The system consists of three main components:</p>
+    <ol>
+        <li><strong>n8n Workflow</strong> - Fetches data from Intercom API</li>
+        <li><strong>Supabase Database</strong> - Stores and manages ticket data</li>
+        <li><strong>Analytics Dashboard</strong> - Visualizes insights</li>
+    </ol>
+
+    <hr>
+
+    <h2>Component 1: n8n Workflow (Data Collection)</h2>
+
+    <h3>What is n8n?</h3>
+    <p>n8n is an automation platform that connects different services. Think of it as a "robot" that runs tasks
+        automatically on a schedule.</p>
+
+    <h3>How the Workflow Works</h3>
+    <ol>
+        <li><strong>Scheduled Trigger:</strong> Every 2 hours, the workflow automatically starts</li>
+        <li><strong>Intercom API Call:</strong> Fetches all resolved tickets from the <strong>last 24 hours</strong>
+            from these teams:
+            <ul>
+                <li>Pro Solutions Task Force</li>
+                <li>CEx Reversal</li>
+                <li>Ticket Dependencies</li>
+                <li>Payments and Treasury</li>
+                <li>GB Email Communication</li>
+                <li>Tech Team</li>
+                <li>Business Operations</li>
+                <li>Platform Operations</li>
+                <li>Case Resolution</li>
+            </ul>
+        </li>
+        <li><strong>Data Processing:</strong> For each ticket, extracts:
+            <ul>
+                <li>Ticket ID and creation date</li>
+                <li>Handler (agent who resolved it)</li>
+                <li>Team assignment</li>
+                <li>Resolution time</li>
+                <li>Issue category</li>
+                <li>Last ticket note (description)</li>
+            </ul>
+        </li>
+        <li><strong>SLA Calculation:</strong> Determines if the ticket met or missed its SLA based on:
+            <ul>
+                <li>Category-specific time limits</li>
+                <li>Working hours (9 AM - 6 PM)</li>
+                <li>Weekends excluded</li>
+            </ul>
+        </li>
+        <li><strong>Database Insert:</strong> Sends processed data to Supabase</li>
+    </ol>
+
+    <h3>Key Files</h3>
+    <ul>
+        <li><code>All Team Ticket log.json</code> - The workflow configuration file</li>
+    </ul>
+
+    <hr>
+
+    <h2>Component 2: Supabase Database (Data Storage)</h2>
+
+    <h3>What is Supabase?</h3>
+    <p>Supabase is a cloud database service. It stores all our ticket data securely and makes it accessible to the
+        dashboard.</p>
+
+    <h3>Data Stored</h3>
+    <table>
+        <tr>
+            <th>Column</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>ticket_id</code></td>
+            <td>Unique Intercom conversation ID</td>
+        </tr>
+        <tr>
+            <td><code>date</code></td>
+            <td>When the ticket was resolved</td>
+        </tr>
+        <tr>
+            <td><code>ticket_handler_agent_name</code></td>
+            <td>Agent who handled the ticket</td>
+        </tr>
+        <tr>
+            <td><code>current_team</code></td>
+            <td>Team the ticket belongs to</td>
+        </tr>
+        <tr>
+            <td><code>resolution_time</code></td>
+            <td>How long it took to resolve (e.g., "2h 15m")</td>
+        </tr>
+        <tr>
+            <td><code>sla</code></td>
+            <td>"Met", "Missed", or "N/A"</td>
+        </tr>
+        <tr>
+            <td><code>issue_category</code></td>
+            <td>Type of issue (e.g., "Breach Event", "Server Issue")</td>
+        </tr>
+        <tr>
+            <td><code>product_type</code></td>
+            <td>CFD or Futures</td>
+        </tr>
+        <tr>
+            <td><code>description_last_ticket_note</code></td>
+            <td>Summary of the ticket</td>
+        </tr>
+    </table>
+
+    <h3>Why Supabase?</h3>
+    <ul>
+        <li><strong>Free tier</strong> for up to 500MB of data</li>
+        <li><strong>Real-time updates</strong> - Dashboard always shows latest data</li>
+        <li><strong>Secure</strong> - Data is encrypted and access controlled</li>
+    </ul>
+
+    <hr>
+
+    <h2>Component 3: Analytics Dashboard (Visualization)</h2>
+
+    <h3>Overview</h3>
+    <p>The dashboard is a web-based interface that displays ticket data in an easy-to-understand format. It's hosted on
+        GitHub Pages and accessible via browser.</p>
+    <p><strong>URL:</strong> <a
+            href="https://rakibhossaincex.github.io/ticket_tracking_automation/">https://rakibhossaincex.github.io/ticket_tracking_automation/</a>
+    </p>
+
+    <hr>
+
+    <h3>Dashboard Sections Explained</h3>
+
+    <h4>Header Section</h4>
+    <ul>
+        <li><strong>Refresh Data:</strong> Manually reload data from Supabase</li>
+        <li><strong>Last Updated:</strong> Shows when data was last fetched</li>
+        <li><strong>Sync Note:</strong> "Data fetched every 2 hours from Intercom"</li>
+    </ul>
+
+    <h4>Filters</h4>
+    <ul>
+        <li><strong>Date Range:</strong> Filter by specific dates</li>
+        <li><strong>Handler:</strong> Select one or multiple agents (multi-select)</li>
+        <li><strong>Team:</strong> Select one or multiple teams (multi-select)</li>
+        <li><strong>SLA Status:</strong> Filter by Met, Missed, or N/A</li>
+        <li><strong>Search:</strong> Free text search across all fields</li>
+    </ul>
+
+    <hr>
+
+    <h3>Metric Cards (Top Row)</h3>
+    <table>
+        <tr>
+            <th>Card</th>
+            <th>What It Shows</th>
+            <th>Why It Matters</th>
+        </tr>
+        <tr>
+            <td><strong>Total Tickets</strong></td>
+            <td>Count of all filtered tickets</td>
+            <td>Overall workload volume</td>
+        </tr>
+        <tr>
+            <td><strong>SLA Met</strong></td>
+            <td>Percentage of tickets resolved on time</td>
+            <td>Team performance indicator</td>
+        </tr>
+        <tr>
+            <td><strong>SLA Missed</strong></td>
+            <td>Percentage of tickets resolved late</td>
+            <td>Areas needing improvement</td>
+        </tr>
+        <tr>
+            <td><strong>Avg Resolution</strong></td>
+            <td>Average time to resolve tickets</td>
+            <td>Efficiency measurement</td>
+        </tr>
+        <tr>
+            <td><strong>CFD Tickets</strong></td>
+            <td>Tickets related to CFD products</td>
+            <td>Product-specific volume</td>
+        </tr>
+        <tr>
+            <td><strong>Futures Tickets</strong></td>
+            <td>Tickets related to Futures products</td>
+            <td>Product-specific volume</td>
+        </tr>
+    </table>
+
+    <hr>
+
+    <h3>Charts Explained</h3>
+
+    <h4>1. Daily Ticket Volume (Bar Chart)</h4>
+    <ul>
+        <li><strong>Shows:</strong> Number of tickets resolved each day</li>
+        <li><strong>Insight:</strong> Identify busy days and workload trends</li>
+    </ul>
+
+    <h4>2. Team Distribution (Pie Chart)</h4>
+    <ul>
+        <li><strong>Shows:</strong> Breakdown of tickets by team</li>
+        <li><strong>Insight:</strong> Which team handles the most tickets</li>
+    </ul>
+
+    <h4>3. Top 10 Handlers (Bar Chart)</h4>
+    <ul>
+        <li><strong>Shows:</strong> Agents with the highest ticket counts</li>
+        <li><strong>Insight:</strong> Identify top performers</li>
+        <li><strong>"See All Handlers"</strong> button opens a paginated list of all agents</li>
+    </ul>
+
+    <h4>4. Ticket Category Distribution (Bar Chart)</h4>
+    <ul>
+        <li><strong>Shows:</strong> Most common issue types</li>
+        <li><strong>Insight:</strong> Identify recurring problems that may need process improvements</li>
+        <li><strong>"See All Categories"</strong> button shows all categories</li>
+    </ul>
+
+    <h4>5. SLA Breakdown (Doughnut Chart)</h4>
+    <ul>
+        <li><strong>Shows:</strong> Proportion of Met vs Missed vs N/A</li>
+        <li><strong>Insight:</strong> Overall SLA compliance rate</li>
+    </ul>
+
+    <h4>6. Product Type Distribution (Pie Chart)</h4>
+    <ul>
+        <li><strong>Shows:</strong> CFD vs Futures ticket split</li>
+        <li><strong>Insight:</strong> Product-specific support demand</li>
+    </ul>
+
+    <h4>7. Avg Resolution by Team (Bar Chart)</h4>
+    <ul>
+        <li><strong>Shows:</strong> Average resolution time per team</li>
+        <li><strong>Insight:</strong> Which team resolves fastest/slowest</li>
+    </ul>
+
+    <h4>8. Team SLA Performance (Bar Chart)</h4>
+    <ul>
+        <li><strong>Shows:</strong> SLA % for each team</li>
+        <li><strong>Insight:</strong> Compare team compliance rates</li>
+    </ul>
+
+    <h4>9. Agent SLA Table</h4>
+    <ul>
+        <li><strong>Shows:</strong> Individual agent performance (Tickets, Met, Missed, SLA %)</li>
+        <li><strong>Insight:</strong> Identify agents needing coaching or recognition</li>
+    </ul>
+
+    <hr>
+
+    <h3>Ticket Details Table</h3>
+    <p>The bottom section displays individual tickets in a sortable, paginated table:</p>
+
+    <table>
+        <tr>
+            <th>Column</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Date</td>
+            <td>Resolution date</td>
+        </tr>
+        <tr>
+            <td>Ticket ID</td>
+            <td>Clickable link to open in Intercom</td>
+        </tr>
+        <tr>
+            <td>Handler</td>
+            <td>Agent name</td>
+        </tr>
+        <tr>
+            <td>Team</td>
+            <td>Assigned team</td>
+        </tr>
+        <tr>
+            <td>Resolution Time</td>
+            <td>Time taken to resolve</td>
+        </tr>
+        <tr>
+            <td>SLA</td>
+            <td>Met/Missed badge</td>
+        </tr>
+        <tr>
+            <td>Category</td>
+            <td>Issue type</td>
+        </tr>
+    </table>
+
+    <p><strong>Click any row</strong> to open a detailed modal with full ticket information.</p>
+
+    <hr>
+
+    <h2>How Data Flows (End-to-End)</h2>
+
+    <div class="code-block">
+        1. Customer raises ticket in Intercom
+        ↓
+        2. Agent resolves the ticket
+        ↓
+        3. n8n workflow runs every 2 hours
+        ↓
+        4. Workflow fetches resolved tickets from Intercom API
+        ↓
+        5. Calculates SLA status for each ticket
+        ↓
+        6. Stores data in Supabase database
+        ↓
+        7. Dashboard reads from Supabase
+        ↓
+        8. Manager views real-time analytics
+    </div>
+
+    <hr>
+
+    <h2>Key Metrics Definitions</h2>
+
+    <h3>SLA (Service Level Agreement)</h3>
+    <ul>
+        <li><strong>Met:</strong> Ticket resolved within the allowed time</li>
+        <li><strong>Missed:</strong> Ticket took longer than allowed</li>
+        <li><strong>N/A:</strong> Cannot calculate (e.g., no category or missing data)</li>
+    </ul>
+
+    <h3>SLA Time Limits (by Category)</h3>
+    <table>
+        <tr>
+            <th>Category Type</th>
+            <th>Time Limit</th>
+        </tr>
+        <tr>
+            <td>Standard issues</td>
+            <td>24 hours</td>
+        </tr>
+        <tr>
+            <td>Urgent issues</td>
+            <td>4 hours</td>
+        </tr>
+        <tr>
+            <td>Complex issues</td>
+            <td>48 hours</td>
+        </tr>
+    </table>
+    <p><em>Working hours only (9 AM - 6 PM, Mon-Fri)</em></p>
+
+    <hr>
+
+    <h2>Access & Maintenance</h2>
+
+    <h3>Dashboard Access</h3>
+    <ul>
+        <li><strong>URL:</strong> <a
+                href="https://rakibhossaincex.github.io/ticket_tracking_automation/">https://rakibhossaincex.github.io/ticket_tracking_automation/</a>
+        </li>
+        <li><strong>No login required</strong> - View-only access</li>
+    </ul>
+
+    <h3>Workflow Monitoring</h3>
+    <ul>
+        <li><strong>n8n Instance:</strong> Check workflow execution history for errors</li>
+        <li><strong>Interval:</strong> Every 2 hours</li>
+    </ul>
+
+    <h3>Supabase Database</h3>
+    <ul>
+        <li><strong>Console:</strong> <a href="https://supabase.com/dashboard">https://supabase.com/dashboard</a></li>
+        <li><strong>Table:</strong> <code>ticket_logs</code></li>
+    </ul>
+
+    <hr>
+
+    <h2>Future Enhancements (Potential)</h2>
+    <ul>
+        <li>Email alerts for SLA breaches</li>
+        <li>Weekly/monthly automated reports</li>
+        <li>Trend analysis over time periods</li>
+        <li>Agent workload balancing suggestions</li>
+    </ul>
+
+    <hr>
+
+    <h2>Contact</h2>
+    <p>For technical questions or issues, contact the system administrator.</p>
+
+    <hr>
+
+    <p><em>Document last updated: January 2026</em></p>
+
+</body>
+
+</html>

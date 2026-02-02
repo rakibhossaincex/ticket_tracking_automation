@@ -1,0 +1,719 @@
+﻿{
+    "name":  "PSTF Automation Trial 3 - FIXED",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// FIXED VERSION - Correct team names to match Intercom\r\n// ------------------------------------\r\n\r\n// CONFIG - 3 TEAMS (EXACT NAMES FROM INTERCOM)\r\nconst TEAM_PSTF_NAME = \"Pro Solutions Task Force\";  // FIXED: Added \u0027s\u0027 to match Intercom\r\nconst TEAM_DEPENDENCY_NAME = \"Ticket Dependencies\";\r\nconst TEAM_REVERSAL_NAME = \"CEx Reversal\";\r\n\r\n// HANDLER ALLOWLIST - Real resolvers only (NO BOTS)\r\nconst ALLOWED_AGENTS = [\r\n  \"Jane Megan\",\r\n  \"Fredy Martinez\",\r\n  \"Sandro Jerome\",\r\n  \"Jack Carter\",\r\n  \"Tyson Mayne\",\r\n  \"Willium Grace\",\r\n  \"Prina Isabella\",\r\n  \"Sammy Sage\",\r\n  \"Ricky Ron\",\r\n  \"Danny Archer\",\r\n  \"Ben Clark\",\r\n  \"Zoe Castillo\",\r\n  \"Sam Fisher\",\r\n  \"Aiden Garcia\"\r\n];\r\n\r\n// ------------------------------------\r\n// Helpers\r\n// ------------------------------------\r\nfunction stripHtml(html) {\r\n  if (!html) return \"\";\r\n  return String(html)\r\n    .replace(/\u003cbr\\s*\\/?\u003e/gi, \"\\n\")\r\n    .replace(/\u003c\\/p\u003e/gi, \"\\n\")\r\n    .replace(/\u003c[^\u003e]+\u003e/g, \" \")\r\n    .replace(/\\s+/g, \" \")\r\n    .trim();\r\n}\r\n\r\nfunction toISODate(unixSeconds) {\r\n  const n = (typeof unixSeconds === \"number\") ? unixSeconds : parseInt(unixSeconds, 10);\r\n  if (!n || Number.isNaN(n)) return \"\";\r\n  return new Date(n * 1000).toISOString().slice(0, 10); \r\n}\r\n\r\nfunction norm(s) { return (s || \"\").toString().trim().toLowerCase(); }\r\n\r\nfunction getAuthor(part) {\r\n  const a = part?.author || part?.created_by || part?.creator || {};\r\n  return {\r\n    id: a?.id ? String(a.id) : \"\",\r\n    name: a?.name || \"\",\r\n    email: a?.email || \"\",\r\n    type: a?.type || \"\"\r\n  };\r\n}\r\n\r\n// Allowlist check\r\nconst ALLOWED_SET = new Set(ALLOWED_AGENTS.map(n =\u003e norm(n)));\r\nfunction isAllowedAgent(name) {\r\n  if (!name) return false;\r\n  return ALLOWED_SET.has(norm(name));\r\n}\r\n\r\n// ------------------------------------\r\n// Data Setup\r\n// ------------------------------------\r\nconst ticket = $json || {};\r\nconst teamMap = $(\u0027Build Team Map4\u0027).first().json || {};\r\nconst nameToId = teamMap.nameToId || {};\r\nconst idToName = teamMap.idToName || {};\r\n\r\nconst pstfTeamId = nameToId[norm(TEAM_PSTF_NAME)];\r\nconst depTeamId  = nameToId[norm(TEAM_DEPENDENCY_NAME)];\r\nconst revTeamId  = nameToId[norm(TEAM_REVERSAL_NAME)];\r\n\r\nconst targetTeamIds = [pstfTeamId, depTeamId, revTeamId].filter(Boolean);\r\nconst currentTeamId = ticket.team_assignee_id ? String(ticket.team_assignee_id) : null;\r\nconst currentTeamName = currentTeamId ? (idToName[currentTeamId] || \"Unknown\") : \"None\";\r\n\r\n// Metadata\r\nconst ticketDisplayId = String(ticket.ticket_id || ticket.id || \"\");\r\nconst ticketState = norm(ticket.ticket_state || ticket.state || \"\");\r\nconst ticketStateLabel = ticket.ticket_state_internal_label || ticket.ticket_state_external_label || ticket.ticket_state || \"\";\r\n\r\n// Resolution check\r\nconst isResolved = (ticketState === \"resolved\" || ticketState === \"closed\");\r\n\r\n// Team check\r\nconst isInTargetTeam = (currentTeamId \u0026\u0026 targetTeamIds.includes(currentTeamId));\r\n\r\nlet issueCategory = \"\";\r\nif (ticket.ticket_type \u0026\u0026 ticket.ticket_type.name) {\r\n  issueCategory = ticket.ticket_type.name;\r\n} else if (ticket.custom_attributes \u0026\u0026 ticket.custom_attributes.ticket_type) {\r\n  issueCategory = ticket.custom_attributes.ticket_type;\r\n}\r\nif (!issueCategory) {\r\n  const titleRaw = ticket?.ticket_attributes?._default_title_ || ticket?.ticket_attributes?._default_title || ticket?.title || ticket?.subject || \"\";\r\n  issueCategory = stripHtml(titleRaw);\r\n}\r\n\r\nconst contact = (ticket?.contacts?.contacts \u0026\u0026 ticket.contacts.contacts[0]) || (Array.isArray(ticket?.contacts) ? ticket.contacts[0] : null);\r\nconst contactName = contact?.name || \"\";\r\nconst contactEmail = contact?.email || \"\";\r\n\r\nlet parts = ticket.ticket_parts || [];\r\nif (!Array.isArray(parts)) {\r\n  const tp = ticket.ticket_parts || {};\r\n  parts = Array.isArray(tp.ticket_parts) ? tp.ticket_parts : (Array.isArray(tp.data) ? tp.data : []);\r\n}\r\nparts.sort((a, b) =\u003e (a?.created_at || 0) - (b?.created_at || 0));\r\n\r\n// Creator\r\nlet creatorName = \"\";\r\nlet creatorEmail = \"\";\r\nconst firstAdminPart = parts.find(p =\u003e getAuthor(p).type === \"admin\");\r\nif (firstAdminPart) {\r\n  const au = getAuthor(firstAdminPart);\r\n  creatorName = au.name;\r\n  creatorEmail = au.email;\r\n} else {\r\n  creatorName = contactName;\r\n  creatorEmail = contactEmail;\r\n}\r\n\r\nlet lastAdminNoteText = \"\";\r\n\r\n// Collect all potential handlers\r\nlet allPotentialHandlers = [];\r\nconst assignee = ticket.assignee || {};\r\nif (assignee.type === \"admin\" \u0026\u0026 assignee.name) {\r\n  allPotentialHandlers.push(assignee.name);\r\n}\r\n\r\nfor (const p of parts) {\r\n  const au = getAuthor(p);\r\n  const body = stripHtml(p?.body || p?.comment || p?.note || \"\");\r\n  const partType = norm(p?.part_type || p?.event_type || p?.type || \"\");\r\n  const isAdmin = norm(au.type) === \"admin\";\r\n  \r\n  if (isAdmin \u0026\u0026 body) lastAdminNoteText = body;\r\n  \r\n  if (partType === \"assignment\") {\r\n    const assignedTo = p.assigned_to || {};\r\n    if (assignedTo.type === \"admin\" \u0026\u0026 assignedTo.name) {\r\n      allPotentialHandlers.push(assignedTo.name);\r\n    }\r\n  }\r\n  \r\n  if (partType === \"close\" \u0026\u0026 au.name) {\r\n    allPotentialHandlers.push(au.name);\r\n  }\r\n}\r\n\r\n// ---------------------------------------------------------\r\n// Handler Determination - ONLY FROM ALLOWLIST\r\n// ---------------------------------------------------------\r\nlet handlerName = \"\";\r\nfor (const candidate of allPotentialHandlers) {\r\n  if (isAllowedAgent(candidate)) {\r\n    handlerName = candidate;\r\n    break;\r\n  }\r\n}\r\n\r\nif (!handlerName) {\r\n  for (const p of parts) {\r\n    const au = getAuthor(p);\r\n    if (au.type === \"admin\" \u0026\u0026 isAllowedAgent(au.name)) {\r\n      handlerName = au.name;\r\n      break;\r\n    }\r\n  }\r\n}\r\n\r\n// ---------------------------------------------------------\r\n// FILTER: Resolved + In Target Team\r\n// ---------------------------------------------------------\r\nconst qualifies = isResolved \u0026\u0026 isInTargetTeam;\r\n\r\n// Debug info\r\nlet debugInfo = `State: ${ticketState}, Team: ${currentTeamName}, InTarget: ${isInTargetTeam}, TargetIDs: [${targetTeamIds.join(\u0027,\u0027)}], CurrentID: ${currentTeamId}`;\r\n\r\n// Output\r\nconst date = toISODate(ticket.updated_at || ticket.created_at);\r\nconst uniqueId = `${date}|${ticketDisplayId}`;\r\n\r\nreturn [{\r\n  json: {\r\n    \"_filter_passed\": qualifies,\r\n    \"_debug_info\": debugInfo,\r\n    \"_potential_handlers\": allPotentialHandlers.join(\", \"),\r\n    \"Unique ID\": uniqueId,\r\n    \"Date\": date,\r\n    \"Ticket ID\": ticketDisplayId,\r\n    \"Ticket Creator Agent Name\": creatorName,\r\n    \"Ticket Handler Agent Name\": handlerName,\r\n    \"Ticket Status\": ticketStateLabel,\r\n    \"Description/Last Ticket Note\": lastAdminNoteText,\r\n    \"Issue Category\": issueCategory, \r\n    \"Dependency Cleared\": \"\",\r\n    \"Dependency No Update\": \"\",\r\n    \"Forwarded?\": \"\", \r\n    \"Forwarded To\": \"\",\r\n    \"Reversal Ticket?\": \"\",\r\n    \"Invalid?\": \"\",\r\n    \"Reversal Reason\": \"\",\r\n    \"Ticket Creator\u0027s Email\": creatorEmail,\r\n    \"Email Communication?\": \"\"\r\n  }\r\n}];"
+                                     },
+                      "id":  "13d7dd6d-8c48-4f49-af46-949d087c4f9f",
+                      "name":  "Ticket Ã¢â€ â€™ Sheet Rows",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -544,
+                                       -3984
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "minutes"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "id":  "7ead7884-fee6-4418-ac6d-7494f9e96f12",
+                      "name":  "Schedule Trigger (Every 5 Minutes)4",
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -2336,
+                                       -3792
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Gate: do nothing until 2025-06-01 (UTC)\n// NOTE: Workflow static data only persists when the workflow is ACTIVE and triggered by Schedule/Webhook.\n\nconst START_UNIX = 1748736000; // 2025-06-01 00:00:00 UTC\nconst nowUnix = Math.floor(Date.now() / 1000);\n\nif (nowUnix \u003c START_UNIX) {\n  // Before start date -\u003e end workflow quietly\n  return [];\n}\n\n// Initialize incremental sync state\nconst sd = $getWorkflowStaticData(\u0027global\u0027);\nif (typeof sd.last_sync !== \u0027number\u0027) sd.last_sync = START_UNIX;\n\nreturn [{\n  json: {\n    start_unix: START_UNIX,\n    now_unix: nowUnix,\n    last_sync: sd.last_sync\n  }\n}];\n"
+                                     },
+                      "id":  "727be953-2f5a-4aea-8f10-4076678dceac",
+                      "name":  "Gate: Start on 2026-01-3",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -2112,
+                                       -3792
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "https://api.intercom.io/teams",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "httpBearerAuth",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "Accept",
+                                                                                         "value":  "application/json"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Intercom-Version",
+                                                                                         "value":  "2.11"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+                                                         "response":  {
+
+                                                                      }
+                                                     }
+                                     },
+                      "id":  "665e19cc-8be2-4091-a351-807c5556bcaa",
+                      "name":  "List Teams4",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.3,
+                      "position":  [
+                                       -1872,
+                                       -3792
+                                   ],
+                      "credentials":  {
+                                          "httpBearerAuth":  {
+                                                                 "id":  "NP8zyf9bSfqaxMj0",
+                                                                 "name":  "Bearer Auth account 3"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Build team maps: id-\u003ename and name(lower)-\u003eid\n\nfunction ensureObj(x){\n  if (!x) return {};\n  if (typeof x === \u0027string\u0027){\n    try { return JSON.parse(x); } catch { return {}; }\n  }\n  return x;\n}\n\nconst resp = ensureObj($json);\nconst teams = resp.teams || resp.data || [];\n\nconst idToName = {};\nconst nameToId = {};\n\nfor (const t of teams) {\n  if (!t || !t.id) continue;\n  const name = (t.name || \u0027\u0027).trim();\n  idToName[t.id] = name;\n  if (name) nameToId[name.toLowerCase()] = t.id;\n}\n\nreturn [{\n  json: {\n    idToName,\n    nameToId\n  }\n}];\n"
+                                     },
+                      "id":  "d65eb9d7-41e6-43bd-aa96-0d83fe756397",
+                      "name":  "Build Team Map4",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -1648,
+                                       -3792
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Build the Intercom /tickets/search request body.\r\n// OPTIMIZED: Filter by TEAM + RESOLVED STATUS at API level\r\n\r\nconst START_UNIX = 1704067200; // 2024-01-01 00:00:00 UTC\r\nconst sd = $getWorkflowStaticData(\u0027global\u0027);\r\n\r\nsd.run_max_updated_at = Math.floor(Date.now() / 1000);\r\n\r\n// Get Team Map\r\nconst teamMap = $(\u0027Build Team Map4\u0027).first().json || {};\r\nconst nameToId = teamMap.nameToId || {};\r\n\r\nfunction norm(s) { return (s || \"\").toString().trim().toLowerCase(); }\r\n\r\n// CORRECT TEAM NAMES\r\nconst TEAM_PSTF_NAME = \"Pro Solutions Task Force\";\r\nconst TEAM_DEPENDENCY_NAME = \"Ticket Dependencies\";\r\nconst TEAM_REVERSAL_NAME = \"CEx Reversal\";\r\n\r\nconst pstfTeamId = nameToId[norm(TEAM_PSTF_NAME)];\r\nconst depTeamId  = nameToId[norm(TEAM_DEPENDENCY_NAME)];\r\nconst revTeamId  = nameToId[norm(TEAM_REVERSAL_NAME)];\r\n\r\nconst targetTeamIds = [pstfTeamId, depTeamId, revTeamId].filter(Boolean);\r\n\r\n// Build team filter conditions\r\nconst teamConditions = targetTeamIds.map(id =\u003e ({\r\n  field: \"team_assignee_id\",\r\n  operator: \"=\",\r\n  value: id\r\n}));\r\n\r\n// Build state filter for resolved tickets\r\nconst stateConditions = [\r\n  { field: \"state\", operator: \"=\", value: \"resolved\" },\r\n  { field: \"state\", operator: \"=\", value: \"closed\" }\r\n];\r\n\r\n// Construct final query:\r\n// (updated_at \u003e START_UNIX) AND (team1 OR team2 OR team3) AND (resolved OR closed)\r\nconst queryConditions = [\r\n  { field: \"updated_at\", operator: \"\u003e\", value: START_UNIX }\r\n];\r\n\r\n// Add team filter (OR across teams)\r\nif (teamConditions.length === 1) {\r\n  queryConditions.push(teamConditions[0]);\r\n} else if (teamConditions.length \u003e 1) {\r\n  queryConditions.push({\r\n    operator: \"OR\",\r\n    value: teamConditions\r\n  });\r\n}\r\n\r\n// Add state filter (resolved OR closed)\r\nqueryConditions.push({\r\n  operator: \"OR\",\r\n  value: stateConditions\r\n});\r\n\r\nreturn [{\r\n  json: {\r\n    body: {\r\n      query: {\r\n        operator: \"AND\",\r\n        value: queryConditions\r\n      },\r\n      pagination: {\r\n        per_page: 150\r\n      }\r\n    },\r\n    meta: {\r\n      start_unix: START_UNIX,\r\n      mode: \"TEAM_AND_STATE_FILTERED\",\r\n      target_teams: targetTeamIds,\r\n      states: [\"resolved\", \"closed\"]\r\n    }\r\n  }\r\n}];"
+                                     },
+                      "id":  "23cd0610-cbad-40e5-8c5e-29c6a48648ca",
+                      "name":  "Build HTTP Body4",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -1440,
+                                       -3792
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.intercom.io/tickets/search",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "httpBearerAuth",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Intercom-Version",
+                                                                                         "value":  "2.11"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ $json.body }}",
+                                         "options":  {
+                                                         "response":  {
+
+                                                                      }
+                                                     }
+                                     },
+                      "id":  "5b04c4ce-58c7-42f3-8ee8-e506c4da02a2",
+                      "name":  "Search Tickets4",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.3,
+                      "position":  [
+                                       -1232,
+                                       -3792
+                                   ],
+                      "credentials":  {
+                                          "httpBearerAuth":  {
+                                                                 "id":  "3aJKqmWSz1EBLLuh",
+                                                                 "name":  "Bearer Auth account 4"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "fieldToSplitOut":  "tickets",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "9a253fd0-b0b4-4812-9585-25b6c4240067",
+                      "name":  "Split Tickets4",
+                      "type":  "n8n-nodes-base.itemLists",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -992,
+                                       -3984
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "=https://api.intercom.io/tickets/{{$json[\"id\"]}}",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "httpBearerAuth",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Intercom-Version",
+                                                                                         "value":  "2.11"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+                                                         "response":  {
+
+                                                                      }
+                                                     }
+                                     },
+                      "id":  "14120b18-23d5-4cbd-95b2-53f32973fa38",
+                      "name":  "Get Ticket Details4",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.3,
+                      "position":  [
+                                       -768,
+                                       -3984
+                                   ],
+                      "credentials":  {
+                                          "httpBearerAuth":  {
+                                                                 "id":  "Wb6mK3xsTXEujIUR",
+                                                                 "name":  "Bearer Auth account 5"
+                                                             }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "boolean":  [
+                                                                            {
+                                                                                "value1":  "={{ $json[\"_filter_passed\"] }}",
+                                                                                "value2":  true
+                                                                            }
+                                                                        ]
+                                                        }
+                                     },
+                      "id":  "18d602d2-0195-46d5-9985-faa2e1ba6202",
+                      "name":  "Filter Passed?2",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -352,
+                                       -3984
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "appendOrUpdate",
+                                         "documentId":  {
+                                                            "__rl":  true,
+                                                            "value":  "1-fXqka0yFkPKNIcK9-RqRH-ZYRajYkghDkPrxMhbwII",
+                                                            "mode":  "list",
+                                                            "cachedResultName":  "PSTF Records (Automated) 3.0",
+                                                            "cachedResultUrl":  "https://docs.google.com/spreadsheets/d/1-fXqka0yFkPKNIcK9-RqRH-ZYRajYkghDkPrxMhbwII/edit?usp=drivesdk"
+                                                        },
+                                         "sheetName":  {
+                                                           "__rl":  true,
+                                                           "value":  "gid=0",
+                                                           "mode":  "list",
+                                                           "cachedResultName":  "Main Records",
+                                                           "cachedResultUrl":  "https://docs.google.com/spreadsheets/d/1-fXqka0yFkPKNIcK9-RqRH-ZYRajYkghDkPrxMhbwII/edit#gid=0"
+                                                       },
+                                         "columns":  {
+                                                         "mappingMode":  "defineBelow",
+                                                         "value":  {
+                                                                       "Unique ID":  "={{ $json[\"Unique ID\"] }}",
+                                                                       "Date":  "={{ $json[\"Date\"] }}",
+                                                                       "Ticket ID":  "={{ $json[\"Ticket ID\"] }}",
+                                                                       "Ticket Creator Agent Name":  "={{ $json[\"Ticket Creator Agent Name\"] }}",
+                                                                       "Ticket Handler Agent Name":  "={{ $json[\"Ticket Handler Agent Name\"] }}",
+                                                                       "Ticket Status":  "={{ $json[\"Ticket Status\"] }}",
+                                                                       "Description/Last Ticket Note":  "={{ $json[\"Description/Last Ticket Note\"] }}",
+                                                                       "Dependency Cleared":  "={{ $json[\"Dependency Cleared\"] }}",
+                                                                       "Dependency No Update":  "={{ $json[\"Dependency No Update\"] }}",
+                                                                       "Forwarded?":  "={{ $json[\"Forwarded?\"] }}",
+                                                                       "Forwarded To":  "={{ $json[\"Forwarded To\"] }}",
+                                                                       "Reversal Ticket?":  "={{ $json[\"Reversal Ticket?\"] }}",
+                                                                       "Invalid?":  "={{ $json[\"Invalid?\"] }}",
+                                                                       "Reversal Reason":  "={{ $json[\"Reversal Reason\"] }}",
+                                                                       "Ticket Creator\u0027s Email":  "={{ $json[\"Ticket Creator\u0027s Email\"] }}",
+                                                                       "Email Communication?":  "={{ $json[\"Email Communication?\"] }}",
+                                                                       "Issue Category":  "={{ $json[\"Issue Category\"] }}",
+                                                                       "Filter Status":  "={{ $json[\"Filter Status\"] }}",
+                                                                       "_debug_handler_candidates":  "={{ $json[\"_debug_handler_candidates\"] }}"
+                                                                   },
+                                                         "matchingColumns":  [
+                                                                                 "Unique ID"
+                                                                             ],
+                                                         "schema":  [
+                                                                        {
+                                                                            "id":  "Unique ID",
+                                                                            "displayName":  "Unique ID",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Date",
+                                                                            "displayName":  "Date",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Ticket ID",
+                                                                            "displayName":  "Ticket ID",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Ticket Creator Agent Name",
+                                                                            "displayName":  "Ticket Creator Agent Name",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Ticket Handler Agent Name",
+                                                                            "displayName":  "Ticket Handler Agent Name",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Ticket Status",
+                                                                            "displayName":  "Ticket Status",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Description/Last Ticket Note",
+                                                                            "displayName":  "Description/Last Ticket Note",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Issue Category",
+                                                                            "displayName":  "Issue Category",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true,
+                                                                            "removed":  false
+                                                                        },
+                                                                        {
+                                                                            "id":  "Dependency Cleared",
+                                                                            "displayName":  "Dependency Cleared",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Dependency No Update",
+                                                                            "displayName":  "Dependency No Update",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Forwarded?",
+                                                                            "displayName":  "Forwarded?",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Forwarded To",
+                                                                            "displayName":  "Forwarded To",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Reversal Ticket?",
+                                                                            "displayName":  "Reversal Ticket?",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Invalid?",
+                                                                            "displayName":  "Invalid?",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Reversal Reason",
+                                                                            "displayName":  "Reversal Reason",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Ticket Creator\u0027s Email",
+                                                                            "displayName":  "Ticket Creator\u0027s Email",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Email Communication?",
+                                                                            "displayName":  "Email Communication?",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "Filter Status",
+                                                                            "displayName":  "Filter Status",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        },
+                                                                        {
+                                                                            "id":  "_debug_handler_candidates",
+                                                                            "displayName":  "_debug_handler_candidates",
+                                                                            "required":  false,
+                                                                            "defaultMatch":  false,
+                                                                            "display":  true,
+                                                                            "type":  "string",
+                                                                            "canBeUsedToMatch":  true
+                                                                        }
+                                                                    ],
+                                                         "attemptToConvertTypes":  false,
+                                                         "convertFieldsToString":  false
+                                                     },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "7d7dac3b-05c6-4d47-8b16-fcb09f2b4ea0",
+                      "name":  "Append or update row in sheet4",
+                      "type":  "n8n-nodes-base.googleSheets",
+                      "typeVersion":  4.7,
+                      "position":  [
+                                       -16,
+                                       -4000
+                                   ],
+                      "credentials":  {
+                                          "googleSheetsOAuth2Api":  {
+                                                                        "id":  "sMkPXGv2wf4LoWLd",
+                                                                        "name":  "Google Sheets account 11"
+                                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Pagination + watermark update (workflow static data)\n//\n// 1) Updates sd.run_max_updated_at with the max updated_at seen so far.\n// 2) Prepares the next request body with pagination.starting_after.\n// 3) On the LAST page, commits sd.last_sync = sd.run_max_updated_at.\n\nfunction clone(o) {\n  return JSON.parse(JSON.stringify(o));\n}\n\nfunction ensureObj(x) {\n  if (!x) return {};\n  if (typeof x === \u0027string\u0027) {\n    try { return JSON.parse(x); } catch { return {}; }\n  }\n  return x;\n}\n\nconst resp = ensureObj($json);\nconst pageNow = resp?.pages?.page ?? 1;\nconst nextCursor = resp?.pages?.next?.starting_after ?? null;\n\n// Update max updated_at seen this run\nconst sd = $getWorkflowStaticData(\u0027global\u0027);\nlet maxSeen = (typeof sd.run_max_updated_at === \u0027number\u0027) ? sd.run_max_updated_at : 0;\n\nconst tickets = Array.isArray(resp?.tickets) ? resp.tickets : [];\nfor (const t of tickets) {\n  const ua = (typeof t?.updated_at === \u0027number\u0027) ? t.updated_at : parseInt(t?.updated_at, 10);\n  if (!Number.isNaN(ua)) maxSeen = Math.max(maxSeen, ua);\n}\n\nsd.run_max_updated_at = maxSeen;\n\n// Clone the original page-1 body so query filters stay the same\nconst baseBody = clone($(\"Build HTTP Body4\").first().json.body);\nbaseBody.pagination = baseBody.pagination || {};\nbaseBody.pagination.per_page = 150;\nif (nextCursor) baseBody.pagination.starting_after = nextCursor;\nelse delete baseBody.pagination.starting_after;\n\n// Safety cap to avoid infinite loops\nconst MAX_PAGES = 2000;\nconst hasNext = Boolean(nextCursor) \u0026\u0026 pageNow \u003c MAX_PAGES;\n\n// On last page: commit watermark\nif (!hasNext) {\n  const START_UNIX = 1748736000;\n  const current = (typeof sd.last_sync === \u0027number\u0027) ? sd.last_sync : START_UNIX;\n  sd.last_sync = Math.max(current, sd.run_max_updated_at || current);\n  delete sd.run_max_updated_at;\n}\n\nreturn [{\n  json: {\n    body: baseBody,\n    has_next: hasNext,\n    page_now: pageNow\n  }\n}];\n"
+                                     },
+                      "id":  "8fc48cbd-793a-4a94-a7df-eeb00dfe7524",
+                      "name":  "Paginate: Prepare next body4",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -992,
+                                       -3792
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "id":  "ad519d97-afd1-48a6-a980-8ba2182f7b72",
+                      "name":  "Merge4",
+                      "type":  "n8n-nodes-base.merge",
+                      "typeVersion":  3.2,
+                      "position":  [
+                                       -656,
+                                       -3744
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ef34f615-6b27-4dd4-8386-54f5cc41d193",
+                                                                                   "leftValue":  "={{ $json.has_next }}",
+                                                                                   "rightValue":  "",
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "true",
+                                                                                                    "singleValue":  true
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "71609e06-3d48-4cf3-94a2-77ef1bb54595",
+                      "name":  "If (Has Next Page?)4",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -320,
+                                       -3744
+                                   ]
+                  }
+              ],
+    "pinData":  {
+
+                },
+    "connections":  {
+                        "Ticket Ã¢â€ â€™ Sheet Rows":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "node":  "Filter Passed?2",
+                                                                                "type":  "main",
+                                                                                "index":  0
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Schedule Trigger (Every 5 Minutes)4":  {
+                                                                    "main":  [
+                                                                                 [
+                                                                                     {
+                                                                                         "node":  "Gate: Start on 2026-01-3",
+                                                                                         "type":  "main",
+                                                                                         "index":  0
+                                                                                     }
+                                                                                 ]
+                                                                             ]
+                                                                },
+                        "Gate: Start on 2026-01-3":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "node":  "List Teams4",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "List Teams4":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Build Team Map4",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Team Map4":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Build HTTP Body4",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Build HTTP Body4":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Search Tickets4",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Search Tickets4":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Split Tickets4",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 },
+                                                                 {
+                                                                     "node":  "Paginate: Prepare next body4",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Split Tickets4":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Get Ticket Details4",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Get Ticket Details4":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Ticket Ã¢â€ â€™ Sheet Rows",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Filter Passed?2":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Append or update row in sheet4",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "node":  "Merge4",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Append or update row in sheet4":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "node":  "Merge4",
+                                                                                    "type":  "main",
+                                                                                    "index":  0
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                        "Paginate: Prepare next body4":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "node":  "Merge4",
+                                                                                  "type":  "main",
+                                                                                  "index":  1
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
+                        "Merge4":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "node":  "If (Has Next Page?)4",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "If (Has Next Page?)4":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Search Tickets4",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 }
+                    },
+    "active":  false,
+    "settings":  {
+                     "executionOrder":  "v1"
+                 },
+    "versionId":  "961c32c4-97a6-400f-aeea-eb180e07ce17",
+    "meta":  {
+                 "templateCredsSetupCompleted":  true,
+                 "instanceId":  "b076ee236eeb0f1e0d5cf68bfef91d2e6b976d3c37b7dea8eeb4131cf958e05f"
+             },
+    "id":  "1TcUXL4EspngoAp9",
+    "tags":  [
+
+             ]
+}

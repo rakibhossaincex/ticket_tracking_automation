@@ -1,0 +1,129 @@
+{
+    "name": "DIAGNOSTIC - Minimal Filters",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                -2400,
+                -400
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// DIAGNOSTIC: Minimal query - just team + date range\n// NO STATE FILTER to see if that's the issue\n\n// Date range in Unix timestamps\nconst START_DATE_UNIX = 1764547200; // 2025-12-01 00:00:00 UTC\nconst END_DATE_UNIX = 1768262399;   // 2026-01-12 23:59:59 UTC\n\n// Team ID from Intercom URL\nconst PSTF_TEAM_ID = \"6661069\";\n\n// SIMPLIFIED QUERY - just team + date range, NO state filter\nconst queryConditions = [\n  { field: \"updated_at\", operator: \">=\", value: START_DATE_UNIX },\n  { field: \"updated_at\", operator: \"<=\", value: END_DATE_UNIX },\n  { field: \"team_assignee_id\", operator: \"=\", value: PSTF_TEAM_ID }\n];\n\nreturn [{\n  json: {\n    body: {\n      query: {\n        operator: \"AND\",\n        value: queryConditions\n      },\n      pagination: {\n        per_page: 150\n      },\n      sort: {\n        field: \"updated_at\",\n        order: \"desc\"\n      }\n    }\n  }\n}];"
+            },
+            "id": "build-http-body",
+            "name": "Build HTTP Body - NO STATE FILTER",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -2160,
+                -400
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.intercom.io/tickets/search",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ $json.body }}",
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "search-tickets",
+            "name": "Search Tickets",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -1920,
+                -400
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "3aJKqmWSz1EBLLuh",
+                    "name": "Bearer Auth account 4"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// DEBUG: Log what we received\nconst resp = $json || {};\nconst tickets = resp.tickets || [];\nconst pages = resp.pages || {};\n\n// Count tickets by state\nconst stateCounts = {};\nfor (const t of tickets) {\n  const state = t.state || t.ticket_state || 'unknown';\n  stateCounts[state] = (stateCounts[state] || 0) + 1;\n}\n\nreturn [{\n  json: {\n    total_in_page: tickets.length,\n    pages_info: pages,\n    state_breakdown: stateCounts,\n    first_5_tickets: tickets.slice(0, 5).map(t => ({\n      id: t.id,\n      ticket_id: t.ticket_id,\n      state: t.state || t.ticket_state,\n      updated_at: t.updated_at,\n      team_assignee_id: t.team_assignee_id\n    }))\n  }\n}];"
+            },
+            "id": "debug-output",
+            "name": "Debug Output",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1680,
+                -400
+            ]
+        }
+    ],
+    "pinData": {},
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Build HTTP Body - NO STATE FILTER",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build HTTP Body - NO STATE FILTER": {
+            "main": [
+                [
+                    {
+                        "node": "Search Tickets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Search Tickets": {
+            "main": [
+                [
+                    {
+                        "node": "Debug Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "id": "",
+    "tags": []
+}
