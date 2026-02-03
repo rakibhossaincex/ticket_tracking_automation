@@ -50,6 +50,7 @@ const filters = {
 const uiUnits = {
     teamSla: 'hour',
     avgRes: 'hour',
+    agentSla: 'hour', // min, hour, day - for agent SLA table
     dailyView: 'day' // day, week, month - default to day
 };
 
@@ -385,6 +386,21 @@ async function init() {
                 btn.classList.add('active');
                 uiUnits.dailyView = btn.dataset.view;
                 updateDailyChartOnly();
+            });
+        });
+    }
+
+    // Agent SLA Unit Toggle
+    const agentSlaUnitToggle = document.getElementById('agentSlaUnitToggle');
+    if (agentSlaUnitToggle) {
+        agentSlaUnitToggle.querySelectorAll('.unit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                agentSlaUnitToggle.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                uiUnits.agentSla = btn.dataset.unit;
+                updateAgentTable();
             });
         });
     }
@@ -1267,7 +1283,7 @@ function updateAgentTable() {
         const a = t.ticket_handler_agent_name;
         if (!a) return;
         if (!agentSlaData[a]) {
-            agentSlaData[a] = { total: 0, met: 0, missed: 0, na: 0 };
+            agentSlaData[a] = { total: 0, met: 0, missed: 0, na: 0, resSum: 0, resCount: 0 };
             agentTickets[a] = [];
         }
         agentSlaData[a].total++;
@@ -1283,6 +1299,13 @@ function updateAgentTable() {
         } else {
             agentSlaData[a].na++;
         }
+
+        // Calculate resolution time for average
+        const resMin = parseResolutionTime(t.resolution_time);
+        if (resMin > 0) {
+            agentSlaData[a].resSum += resMin;
+            agentSlaData[a].resCount++;
+        }
     });
 
     // Store for modal access
@@ -1293,7 +1316,8 @@ function updateAgentTable() {
             const d = agentSlaData[name];
             const totalSla = d.met + d.missed; // Percentage should be based on tickets with an actual Met/Missed status
             const pct = totalSla ? Math.round((d.met / totalSla) * 100) : 0;
-            return { name, ...d, pct };
+            const avgResMin = d.resCount > 0 ? (d.resSum / d.resCount) : 0;
+            return { name, ...d, pct, avgResMin };
         })
         .sort((a, b) => b.total - a.total) // Still sorting by volume primarily, or could sort by b.pct - a.pct
         .slice(0, 20);
@@ -1301,12 +1325,14 @@ function updateAgentTable() {
     if (elements.agentSlaBody) {
         elements.agentSlaBody.innerHTML = sortedAgents.map(d => {
             const cls = d.pct >= 90 ? 'sla-good' : (d.pct >= 75 ? 'sla-warning' : 'sla-poor');
+            const avgResDisplay = formatDuration(d.avgResMin, uiUnits.agentSla);
             return `<tr>
                 <td>${d.name}</td>
                 <td>${d.total}</td>
                 <td>${d.met}</td>
                 <td>${d.missed}</td>
                 <td class="${cls}">${d.pct}%</td>
+                <td>${avgResDisplay}</td>
                 <td><button class="btn-details" onclick="showAgentDetails('${d.name.replace(/'/g, "\\'")}')">Details</button></td>
             </tr>`;
         }).join('');
