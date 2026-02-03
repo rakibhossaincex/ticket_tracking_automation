@@ -1261,11 +1261,17 @@ function renderTeamDistList(labels, counts, colors) {
 
 function updateAgentTable() {
     const agentSlaData = {};
+    const agentTickets = {}; // Store tickets per agent for modal
+
     filteredData.forEach(t => {
         const a = t.ticket_handler_agent_name;
         if (!a) return;
-        if (!agentSlaData[a]) agentSlaData[a] = { total: 0, met: 0, missed: 0, na: 0 };
+        if (!agentSlaData[a]) {
+            agentSlaData[a] = { total: 0, met: 0, missed: 0, na: 0 };
+            agentTickets[a] = [];
+        }
         agentSlaData[a].total++;
+        agentTickets[a].push(t);
 
         // AGENT SLA PERFORMANCE: Use the agent_sla_status column directly
         const status = t.agent_sla_status;
@@ -1278,6 +1284,9 @@ function updateAgentTable() {
             agentSlaData[a].na++;
         }
     });
+
+    // Store for modal access
+    window.agentTicketsData = agentTickets;
 
     const sortedAgents = Object.keys(agentSlaData)
         .map(name => {
@@ -1292,7 +1301,14 @@ function updateAgentTable() {
     if (elements.agentSlaBody) {
         elements.agentSlaBody.innerHTML = sortedAgents.map(d => {
             const cls = d.pct >= 90 ? 'sla-good' : (d.pct >= 75 ? 'sla-warning' : 'sla-poor');
-            return `<tr><td>${d.name}</td><td>${d.total}</td><td>${d.met}</td><td>${d.missed}</td><td class="${cls}">${d.pct}%</td></tr>`;
+            return `<tr>
+                <td>${d.name}</td>
+                <td>${d.total}</td>
+                <td>${d.met}</td>
+                <td>${d.missed}</td>
+                <td class="${cls}">${d.pct}%</td>
+                <td><button class="btn-details" onclick="showAgentDetails('${d.name.replace(/'/g, "\\'")}')">Details</button></td>
+            </tr>`;
         }).join('');
     }
 }
@@ -1916,6 +1932,96 @@ function handleCategoriesEscapeKey(e) {
 
 function handleCategoriesOutsideClick(e) {
     if (e.target.classList.contains('modal')) closeCategoriesModal();
+}
+
+// ============================================
+// AGENT DETAIL MODAL
+// ============================================
+
+function showAgentDetails(agentName) {
+    const modal = document.getElementById('agentDetailModal');
+    const title = document.getElementById('agentDetailTitle');
+    const body = document.getElementById('agentDetailBody');
+
+    title.textContent = `Tickets for ${agentName}`;
+
+    const tickets = window.agentTicketsData ? window.agentTicketsData[agentName] || [] : [];
+
+    // Separate tickets by SLA status
+    const metTickets = tickets.filter(t => t.agent_sla_status === 'Met');
+    const missedTickets = tickets.filter(t => t.agent_sla_status === 'Missed');
+
+    // Group tickets by date
+    function groupByDate(ticketList) {
+        const grouped = {};
+        ticketList.forEach(t => {
+            const date = t.date || 'Unknown';
+            if (!grouped[date]) grouped[date] = [];
+            grouped[date].push(t);
+        });
+        // Sort by date descending
+        const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+        return sortedDates.map(date => ({ date, tickets: grouped[date] }));
+    }
+
+    function renderTicketLink(t) {
+        const ticketId = t.ticket_id || '-';
+        if (t.intercom_id) {
+            return `<a href="https://app.intercom.com/a/inbox/aphmhtyj/inbox/conversation/${t.intercom_id}?view=List" target="_blank" class="ticket-id-link">${ticketId}</a>`;
+        }
+        return ticketId;
+    }
+
+    function renderSection(title, sectionTickets, slaClass) {
+        if (sectionTickets.length === 0) {
+            return `<div class="agent-detail-section">
+                <h4 class="section-title ${slaClass}">${title} (0)</h4>
+                <p class="no-tickets">No tickets</p>
+            </div>`;
+        }
+
+        const grouped = groupByDate(sectionTickets);
+        let html = `<div class="agent-detail-section">
+            <h4 class="section-title ${slaClass}">${title} (${sectionTickets.length})</h4>`;
+
+        grouped.forEach(({ date, tickets: dateTickets }) => {
+            html += `<div class="date-group">
+                <div class="date-header">${date}</div>
+                <div class="ticket-chips">
+                    ${dateTickets.map(t => renderTicketLink(t)).join('')}
+                </div>
+            </div>`;
+        });
+
+        html += '</div>';
+        return html;
+    }
+
+    body.innerHTML = `
+        ${renderSection('✓ SLA Met', metTickets, 'sla-met-section')}
+        ${renderSection('✗ SLA Missed', missedTickets, 'sla-missed-section')}
+    `;
+
+    modal.classList.add('active');
+
+    // Add event listeners
+    document.addEventListener('keydown', handleAgentDetailEscapeKey);
+    modal.addEventListener('click', handleAgentDetailOutsideClick);
+}
+
+function closeAgentDetailModal() {
+    const modal = document.getElementById('agentDetailModal');
+    modal.classList.remove('active');
+    document.removeEventListener('keydown', handleAgentDetailEscapeKey);
+    modal.removeEventListener('click', handleAgentDetailOutsideClick);
+}
+
+function handleAgentDetailEscapeKey(e) {
+    if (e.key === 'Escape') closeAgentDetailModal();
+}
+
+function handleAgentDetailOutsideClick(e) {
+    if (e.target.classList.contains('modal')) closeAgentDetailModal();
 }
 
 // ============================================

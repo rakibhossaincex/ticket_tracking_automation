@@ -242,6 +242,7 @@
                                 <th>Met</th>
                                 <th>Missed</th>
                                 <th>SLA %</th>
+                                <th>Details</th>
                             </tr>
                         </thead>
                         <tbody id="agentSlaBody">
@@ -361,6 +362,19 @@
                 <div id="categoriesTableContainer" class="handlers-table-container">
                     <!-- Category rows will be rendered here -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Tickets Detail Modal -->
+    <div id="agentDetailModal" class="modal">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header">
+                <h2 id="agentDetailTitle">Agent Ticket Details</h2>
+                <button class="modal-close" onclick="closeAgentDetailModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="agentDetailBody">
+                <!-- Agent ticket details will be rendered here -->
             </div>
         </div>
     </div>
