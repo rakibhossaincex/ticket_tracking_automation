@@ -158,7 +158,14 @@
         <!-- Charts Row 1: 50-50 layout -->
         <section class="charts-grid-50">
             <div class="chart-card">
-                <h3>Daily Ticket Volume</h3>
+                <div class="chart-header">
+                    <h3>Daily Ticket Volume</h3>
+                    <div class="unit-toggle" id="dailyChartToggle">
+                        <button class="unit-btn active" data-view="day">Days</button>
+                        <button class="unit-btn" data-view="week">Weeks</button>
+                        <button class="unit-btn" data-view="month">Months</button>
+                    </div>
+                </div>
                 <canvas id="dailyChart"></canvas>
             </div>
             <div class="chart-card">
