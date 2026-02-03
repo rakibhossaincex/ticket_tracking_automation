@@ -49,7 +49,8 @@ const filters = {
 
 const uiUnits = {
     teamSla: 'hour',
-    avgRes: 'hour'
+    avgRes: 'hour',
+    dailyView: 'day' // day, week, month - default to day
 };
 
 // CANONICAL SLA CALCULATION
@@ -372,6 +373,21 @@ async function init() {
 
     // See All Categories button
     document.getElementById('seeAllCategories').addEventListener('click', showAllCategoriesModal);
+
+    // Daily Chart View Toggle
+    const dailyChartToggle = document.getElementById('dailyChartToggle');
+    if (dailyChartToggle) {
+        dailyChartToggle.querySelectorAll('.unit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dailyChartToggle.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                uiUnits.dailyView = btn.dataset.view;
+                updateDailyChartOnly();
+            });
+        });
+    }
 
     // Clicking anywhere outside closes everything
     document.addEventListener('click', () => closeAllDropdowns(null));
@@ -1114,21 +1130,8 @@ function initCharts() {
 }
 
 function updateCharts() {
-    // 1. Daily Volume
-    const dailyData = {};
-    filteredData.forEach(t => { if (t.date) dailyData[t.date] = (dailyData[t.date] || 0) + 1; });
-    const sortedDates = Object.keys(dailyData).sort();
-    dailyChart.data.labels = sortedDates;
-    dailyChart.data.datasets = [{
-        label: 'Tickets',
-        data: sortedDates.map(d => dailyData[d]),
-        backgroundColor: 'rgba(99, 102, 241, 0.7)',
-        borderColor: '#6366f1',
-        borderWidth: 1
-    }];
-    const dailyMax = Math.max(...(dailyChart.data.datasets[0].data), 0);
-    dailyChart.options.scales.y.suggestedMax = Math.ceil(dailyMax * 1.30) || 10; // +30% headroom
-    dailyChart.update();
+    // 1. Daily Volume - use separate function for toggle support
+    updateDailyChartOnly();
 
     // 2. Team Distribution (Leader Lines)
     const teamDataMap = {};
@@ -1389,6 +1392,148 @@ function updateAvgResChartOnly() {
     avgResChart.update();
 }
 
+function updateDailyChartOnly() {
+    if (!dailyChart) return;
+
+    const viewMode = uiUnits.dailyView; // 'day', 'week', 'month'
+
+    // Get last 30 days boundary
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    // Filter data to last 30 days only
+    const last30DaysData = filteredData.filter(t => {
+        if (!t.date) return false;
+        const ticketDate = new Date(t.date + 'T00:00:00');
+        return ticketDate >= thirtyDaysAgo && ticketDate <= today;
+    });
+
+    let labels = [];
+    let data = [];
+
+    if (viewMode === 'day') {
+        // Group by day - show last 30 days
+        const dailyData = {};
+        last30DaysData.forEach(t => {
+            if (t.date) dailyData[t.date] = (dailyData[t.date] || 0) + 1;
+        });
+
+        const sortedDates = Object.keys(dailyData).sort();
+
+        // Create smart labels: day number, with month at start of month
+        labels = sortedDates.map((dateStr, idx) => {
+            const d = new Date(dateStr + 'T00:00:00');
+            const day = d.getDate();
+            const month = d.toLocaleString('default', { month: 'short' });
+
+            // Show month name at the start of month (day 1) or first entry
+            if (day === 1 || idx === 0) {
+                return `${month} ${day}`;
+            }
+            return day.toString();
+        });
+
+        data = sortedDates.map(d => dailyData[d]);
+
+    } else if (viewMode === 'week') {
+        // Group by week
+        const weeklyData = {};
+        const weekRanges = {}; // Store week date ranges for tooltip
+        last30DaysData.forEach(t => {
+            if (!t.date) return;
+            const d = new Date(t.date + 'T00:00:00');
+            // Get ISO week start (Monday)
+            const dayOfWeek = d.getDay();
+            const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+            const weekStart = new Date(d);
+            weekStart.setDate(diff);
+            const weekKey = formatDateLocal(weekStart);
+            weeklyData[weekKey] = (weeklyData[weekKey] || 0) + 1;
+
+            // Calculate week end (Sunday)
+            if (!weekRanges[weekKey]) {
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekStart.getDate() + 6);
+                weekRanges[weekKey] = {
+                    start: weekStart,
+                    end: weekEnd
+                };
+            }
+        });
+
+        const sortedWeeks = Object.keys(weeklyData).sort();
+
+        labels = sortedWeeks.map(dateStr => {
+            const d = new Date(dateStr + 'T00:00:00');
+            const month = d.toLocaleString('default', { month: 'short' });
+            const day = d.getDate();
+            return `${month} ${day}`;
+        });
+
+        data = sortedWeeks.map(w => weeklyData[w]);
+
+        // Store week ranges for tooltip access
+        dailyChart._weekRanges = sortedWeeks.map(weekKey => weekRanges[weekKey]);
+
+    } else {
+        // Group by month (default)
+        const monthlyData = {};
+        last30DaysData.forEach(t => {
+            if (!t.date) return;
+            const d = new Date(t.date + 'T00:00:00');
+            const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            monthlyData[monthKey] = (monthlyData[monthKey] || 0) + 1;
+        });
+
+        const sortedMonths = Object.keys(monthlyData).sort();
+
+        labels = sortedMonths.map(monthKey => {
+            const [year, month] = monthKey.split('-');
+            const d = new Date(parseInt(year), parseInt(month) - 1, 1);
+            return d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        });
+
+        data = sortedMonths.map(m => monthlyData[m]);
+
+        // Clear week ranges for non-week views
+        dailyChart._weekRanges = null;
+    }
+
+    dailyChart.data.labels = labels;
+    dailyChart.data.datasets = [{
+        label: 'Tickets',
+        data: data,
+        backgroundColor: 'rgba(99, 102, 241, 0.7)',
+        borderColor: '#6366f1',
+        borderWidth: 1
+    }];
+
+    // Update tooltip for weekly view to show date range
+    dailyChart.options.plugins.tooltip = {
+        callbacks: {
+            title: (items) => {
+                if (uiUnits.dailyView === 'week' && dailyChart._weekRanges) {
+                    const idx = items[0].dataIndex;
+                    const range = dailyChart._weekRanges[idx];
+                    if (range) {
+                        const startStr = range.start.toLocaleString('default', { month: 'short', day: 'numeric' });
+                        const endStr = range.end.toLocaleString('default', { month: 'short', day: 'numeric' });
+                        return `${startStr} - ${endStr}`;
+                    }
+                }
+                return items[0].label;
+            }
+        }
+    };
+
+    const dailyMax = Math.max(...data, 0);
+    dailyChart.options.scales.y.suggestedMax = Math.ceil(dailyMax * 1.30) || 10;
+    dailyChart.update();
+}
+
 // ============================================
 // TABLE
 // ============================================
@@ -1417,10 +1562,14 @@ function renderTable() {
             const displaySla = ticket.ticket_sla_status || ticket.sla || '-';
             const slaClass = displaySla !== '-' ? displaySla.toLowerCase() : 'na';
 
+            const ticketIdDisplay = ticket.intercom_id
+                ? `<a href="https://app.intercom.com/a/inbox/aphmhtyj/inbox/conversation/${ticket.intercom_id}?view=List" target="_blank" class="ticket-id-link" onclick="event.stopPropagation()">${ticket.ticket_id || '-'}</a>`
+                : (ticket.ticket_id || '-');
+
             return `
             <tr class="clickable-row" data-index="${start + index}">
                 <td>${ticket.date || '-'}</td>
-                <td>${ticket.ticket_id || '-'}</td>
+                <td>${ticketIdDisplay}</td>
                 <td>${ticket.ticket_handler_agent_name || '-'}</td>
                 <td>${ticket.current_team || '-'}</td>
                 <td>${ticket.resolution_time || '-'}</td>

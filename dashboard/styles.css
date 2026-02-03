@@ -937,6 +937,38 @@ body {
 #pageSize {
     height: 42px;
     min-width: 150px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    padding: 0 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a0a0b0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+#pageSize:hover {
+    border-color: var(--accent-primary);
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+#pageSize:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+#pageSize option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    padding: 10px;
 }
 
 .table-container {
@@ -980,6 +1012,18 @@ td {
 
 tr:hover td {
     background: rgba(255, 255, 255, 0.03);
+}
+
+.ticket-id-link {
+    color: var(--accent-primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.ticket-id-link:hover {
+    color: var(--accent-secondary);
+    text-decoration: underline;
 }
 
 .loading {
