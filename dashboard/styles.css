@@ -711,7 +711,7 @@ body {
     border-radius: var(--radius);
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
     z-index: 1000;
-    width: 540px;
+    width: 480px;
     overflow: visible;
 }
 
@@ -815,7 +815,9 @@ body {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    width: 100% !important;
+    width: 280px !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
     position: static !important;
     margin-top: 8px;
 }
@@ -824,24 +826,77 @@ body {
     display: block !important;
 }
 
+/* Fix month header layout to prevent overlap */
 .picker-main .flatpickr-months {
-    padding: 0 8px;
+    padding: 0;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.picker-main .flatpickr-months .flatpickr-month {
+    flex: 1;
+    text-align: center;
 }
 
 .picker-main .flatpickr-current-month {
-    font-size: 1rem;
+    font-size: 0.9rem;
+    padding: 0;
+    width: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.picker-main .flatpickr-current-month .cur-month {
+    margin-right: 4px;
+}
+
+/* Style and highlight arrow buttons */
+.picker-main .flatpickr-prev-month,
+.picker-main .flatpickr-next-month {
+    position: static !important;
+    padding: 8px !important;
+    border-radius: 4px !important;
+    background: rgba(99, 102, 241, 0.2) !important;
+    border: 1px solid rgba(99, 102, 241, 0.4) !important;
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.picker-main .flatpickr-prev-month:hover,
+.picker-main .flatpickr-next-month:hover {
+    background: rgba(99, 102, 241, 0.4) !important;
+    border-color: var(--accent-primary) !important;
+}
+
+.picker-main .flatpickr-prev-month svg,
+.picker-main .flatpickr-next-month svg {
+    fill: var(--accent-primary) !important;
+    width: 12px !important;
+    height: 12px !important;
 }
 
 .picker-main .dayContainer {
-    max-width: 100%;
-    width: 100%;
+    max-width: 280px;
+    width: 280px;
+    min-width: 280px;
+}
+
+.picker-main .flatpickr-days {
+    width: 280px !important;
 }
 
 .picker-main .flatpickr-day {
-    max-width: 40px;
-    height: 36px;
-    line-height: 36px;
+    max-width: 36px;
+    height: 32px;
+    line-height: 32px;
     border-radius: 4px;
+    flex-basis: 36px;
 }
 
 .picker-main .flatpickr-day.selected,
@@ -1544,6 +1599,93 @@ td:last-child {
     padding: 12px 16px;
 }
 
+/* Chart Header Controls */
+.chart-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* All Daily Volume Modal */
+.all-daily-modal-content {
+    max-width: 95% !important;
+    width: 95% !important;
+    height: 90vh !important;
+    max-height: 90vh !important;
+}
+
+.all-daily-body {
+    overflow-y: auto !important;
+    max-height: calc(90vh - 80px) !important;
+    padding: 24px !important;
+}
+
+.modal-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.modal-header-controls .modal-close {
+    margin-left: 0;
+}
+
+/* Daily Chart Row Container */
+.daily-chart-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.daily-chart-row {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+
+.daily-chart-row h4 {
+    margin: 0 0 12px 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.daily-chart-row canvas {
+    width: 100% !important;
+    height: 200px !important;
+}
+
+/* Stats summary for All Daily Modal */
+.all-daily-stats {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+}
+
+.all-daily-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.all-daily-stat .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.all-daily-stat .stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
 /* Responsive for smaller screens */
 @media (max-width: 768px) {
     .agent-detail-columns {
@@ -1552,5 +1694,10 @@ td:last-child {
 
     .section-scroll-area {
         max-height: 250px;
+    }
+
+    .chart-header-controls {
+        flex-direction: column;
+        gap: 8px;
     }
 }

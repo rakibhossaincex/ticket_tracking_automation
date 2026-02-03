@@ -156,10 +156,13 @@
             <div class="chart-card">
                 <div class="chart-header">
                     <h3>Daily Ticket Volume</h3>
-                    <div class="unit-toggle" id="dailyChartToggle">
-                        <button class="unit-btn active" data-view="day">Days</button>
-                        <button class="unit-btn" data-view="week">Weeks</button>
-                        <button class="unit-btn" data-view="month">Months</button>
+                    <div class="chart-header-controls">
+                        <div class="unit-toggle" id="dailyChartToggle">
+                            <button class="unit-btn active" data-view="day">Days</button>
+                            <button class="unit-btn" data-view="week">Weeks</button>
+                            <button class="unit-btn" data-view="month">Months</button>
+                        </div>
+                        <button class="btn-link" id="seeAllDaily">See All →</button>
                     </div>
                 </div>
                 <canvas id="dailyChart"></canvas>
@@ -377,6 +380,26 @@
             </div>
             <div class="modal-body" id="agentDetailBody">
                 <!-- Agent ticket details will be rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- All Daily Volume Modal -->
+    <div id="allDailyModal" class="modal">
+        <div class="modal-content all-daily-modal-content">
+            <div class="modal-header">
+                <h2>All Ticket Volume</h2>
+                <div class="modal-header-controls">
+                    <div class="unit-toggle" id="allDailyViewToggle">
+                        <button class="unit-btn active" data-view="day">Days</button>
+                        <button class="unit-btn" data-view="week">Weeks</button>
+                        <button class="unit-btn" data-view="month">Months</button>
+                    </div>
+                    <button class="modal-close" onclick="closeAllDailyModal()">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body all-daily-body" id="allDailyBody">
+                <!-- Charts will be rendered here -->
             </div>
         </div>
     </div>

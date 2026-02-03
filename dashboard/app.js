@@ -404,6 +404,26 @@ async function init() {
         });
     }
 
+    // See All Daily Volume button
+    const seeAllDailyBtn = document.getElementById('seeAllDaily');
+    if (seeAllDailyBtn) {
+        seeAllDailyBtn.addEventListener('click', showAllDailyModal);
+    }
+
+    // All Daily Modal View Toggle
+    const allDailyViewToggle = document.getElementById('allDailyViewToggle');
+    if (allDailyViewToggle) {
+        allDailyViewToggle.querySelectorAll('.unit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                allDailyViewToggle.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderAllDailyCharts(btn.dataset.view);
+            });
+        });
+    }
+
     // Clicking anywhere outside closes everything
     document.addEventListener('click', () => closeAllDropdowns(null));
 
@@ -446,9 +466,9 @@ async function loadData() {
                 .order('created_at', { ascending: false })
                 .range(fromIdx, toIdx);
 
-            // Apply Server-Side Filters
-            if (filters.from) query = query.gte('created_at', filters.from);
-            if (filters.to) query = query.lte('created_at', filters.to);
+            // Apply Server-Side Filters - using 'date' column (resolved date, YYYY-MM-DD format)
+            if (filters.from) query = query.gte('date', filters.from.split('T')[0]);
+            if (filters.to) query = query.lte('date', filters.to.split('T')[0]);
 
             if (filters.agents.size > 0) {
                 query = query.in('ticket_handler_agent_name', Array.from(filters.agents));
@@ -1453,52 +1473,68 @@ function updateDailyChartOnly() {
 
     const viewMode = uiUnits.dailyView; // 'day', 'week', 'month'
 
-    // Get last 30 days boundary
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
-    thirtyDaysAgo.setHours(0, 0, 0, 0);
-
-    // Filter data to last 30 days only
-    const last30DaysData = filteredData.filter(t => {
-        if (!t.date) return false;
-        const ticketDate = new Date(t.date + 'T00:00:00');
-        return ticketDate >= thirtyDaysAgo && ticketDate <= today;
-    });
+    // Use the globally filtered data (already filtered by selected date range)
+    const chartData = filteredData.filter(t => t.date);
 
     let labels = [];
     let data = [];
+    let fullDates = []; // Store full dates for tooltip
 
     if (viewMode === 'day') {
-        // Group by day - show last 30 days
+        // Group by day
         const dailyData = {};
-        last30DaysData.forEach(t => {
+        chartData.forEach(t => {
             if (t.date) dailyData[t.date] = (dailyData[t.date] || 0) + 1;
         });
 
-        const sortedDates = Object.keys(dailyData).sort();
+        const allSortedDates = Object.keys(dailyData).sort();
 
-        // Create smart labels: day number, with month at start of month
+        // Limit to last 30 days within the selected range
+        const sortedDates = allSortedDates.slice(-30);
+
+        // Store full data for modal
+        window.dailyChartFullData = {
+            allDates: allSortedDates,
+            dailyData: dailyData
+        };
+
+        // Track previous year for year boundary detection
+        let prevYear = null;
+
+        // Create smart labels: day number, with month at start of month, year at start of year
         labels = sortedDates.map((dateStr, idx) => {
             const d = new Date(dateStr + 'T00:00:00');
             const day = d.getDate();
             const month = d.toLocaleString('default', { month: 'short' });
+            const year = d.getFullYear();
 
-            // Show month name at the start of month (day 1) or first entry
-            if (day === 1 || idx === 0) {
-                return `${month} ${day}`;
+            let label = '';
+
+            // Show year at the start of year (Jan 1) or when year changes
+            if (day === 1 && d.getMonth() === 0) {
+                label = `${year}\n${month} ${day}`;
+            } else if (prevYear !== null && year !== prevYear) {
+                // Year changed mid-stream
+                label = `${year}\n${month} ${day}`;
+            } else if (day === 1 || idx === 0) {
+                // Show month name at the start of month (day 1) or first entry
+                label = `${month} ${day}`;
+            } else {
+                label = day.toString();
             }
-            return day.toString();
+
+            prevYear = year;
+            return label;
         });
 
         data = sortedDates.map(d => dailyData[d]);
+        fullDates = sortedDates; // Store for tooltip
 
     } else if (viewMode === 'week') {
         // Group by week
         const weeklyData = {};
         const weekRanges = {}; // Store week date ranges for tooltip
-        last30DaysData.forEach(t => {
+        chartData.forEach(t => {
             if (!t.date) return;
             const d = new Date(t.date + 'T00:00:00');
             // Get ISO week start (Monday)
@@ -1520,12 +1556,25 @@ function updateDailyChartOnly() {
             }
         });
 
-        const sortedWeeks = Object.keys(weeklyData).sort();
+        const allSortedWeeks = Object.keys(weeklyData).sort();
+        const sortedWeeks = allSortedWeeks.slice(-30); // Last 30 weeks for chart
+
+        // Store full data for modal
+        window.dailyChartFullData = {
+            allWeeks: allSortedWeeks,
+            weeklyData: weeklyData,
+            weekRanges: weekRanges
+        };
 
         labels = sortedWeeks.map(dateStr => {
             const d = new Date(dateStr + 'T00:00:00');
             const month = d.toLocaleString('default', { month: 'short' });
             const day = d.getDate();
+            const year = d.getFullYear();
+            // Show year for January weeks
+            if (d.getMonth() === 0 && day <= 7) {
+                return `${year}\n${month} ${day}`;
+            }
             return `${month} ${day}`;
         });
 
@@ -1533,18 +1582,26 @@ function updateDailyChartOnly() {
 
         // Store week ranges for tooltip access
         dailyChart._weekRanges = sortedWeeks.map(weekKey => weekRanges[weekKey]);
+        fullDates = sortedWeeks;
 
     } else {
         // Group by month (default)
         const monthlyData = {};
-        last30DaysData.forEach(t => {
+        chartData.forEach(t => {
             if (!t.date) return;
             const d = new Date(t.date + 'T00:00:00');
             const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             monthlyData[monthKey] = (monthlyData[monthKey] || 0) + 1;
         });
 
-        const sortedMonths = Object.keys(monthlyData).sort();
+        const allSortedMonths = Object.keys(monthlyData).sort();
+        const sortedMonths = allSortedMonths.slice(-12); // Last 12 months for chart
+
+        // Store full data for modal
+        window.dailyChartFullData = {
+            allMonths: allSortedMonths,
+            monthlyData: monthlyData
+        };
 
         labels = sortedMonths.map(monthKey => {
             const [year, month] = monthKey.split('-');
@@ -1553,10 +1610,14 @@ function updateDailyChartOnly() {
         });
 
         data = sortedMonths.map(m => monthlyData[m]);
+        fullDates = sortedMonths;
 
         // Clear week ranges for non-week views
         dailyChart._weekRanges = null;
     }
+
+    // Store full dates for tooltip
+    dailyChart._fullDates = fullDates;
 
     dailyChart.data.labels = labels;
     dailyChart.data.datasets = [{
@@ -1567,20 +1628,30 @@ function updateDailyChartOnly() {
         borderWidth: 1
     }];
 
-    // Update tooltip for weekly view to show date range
+    // Update tooltip to show full date
     dailyChart.options.plugins.tooltip = {
         callbacks: {
             title: (items) => {
+                const idx = items[0].dataIndex;
+
                 if (uiUnits.dailyView === 'week' && dailyChart._weekRanges) {
-                    const idx = items[0].dataIndex;
                     const range = dailyChart._weekRanges[idx];
                     if (range) {
-                        const startStr = range.start.toLocaleString('default', { month: 'short', day: 'numeric' });
-                        const endStr = range.end.toLocaleString('default', { month: 'short', day: 'numeric' });
+                        const startStr = range.start.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' });
+                        const endStr = range.end.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' });
                         return `${startStr} - ${endStr}`;
+                    }
+                } else if (uiUnits.dailyView === 'day' && dailyChart._fullDates) {
+                    const dateStr = dailyChart._fullDates[idx];
+                    if (dateStr) {
+                        const d = new Date(dateStr + 'T00:00:00');
+                        return d.toLocaleString('default', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
                     }
                 }
                 return items[0].label;
+            },
+            label: (ctx) => {
+                return `Tickets: ${ctx.raw}`;
             }
         }
     };
@@ -1796,6 +1867,270 @@ function handleEscapeKey(e) {
 
 function handleOutsideClick(e) {
     if (e.target.classList.contains('modal')) closeModal();
+}
+
+// ============================================
+// ALL DAILY VOLUME MODAL
+// ============================================
+
+let allDailyCharts = []; // Store chart instances for cleanup
+
+function showAllDailyModal() {
+    const modal = document.getElementById('allDailyModal');
+    modal.classList.add('active');
+
+    // Reset view toggle to match current main chart view
+    const toggle = document.getElementById('allDailyViewToggle');
+    if (toggle) {
+        toggle.querySelectorAll('.unit-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.view === uiUnits.dailyView);
+        });
+    }
+
+    renderAllDailyCharts(uiUnits.dailyView);
+
+    // Add event listeners
+    document.addEventListener('keydown', handleAllDailyEscapeKey);
+    modal.addEventListener('click', handleAllDailyOutsideClick);
+}
+
+function closeAllDailyModal() {
+    const modal = document.getElementById('allDailyModal');
+    modal.classList.remove('active');
+
+    // Cleanup charts
+    allDailyCharts.forEach(chart => chart.destroy());
+    allDailyCharts = [];
+
+    document.removeEventListener('keydown', handleAllDailyEscapeKey);
+    modal.removeEventListener('click', handleAllDailyOutsideClick);
+}
+
+function handleAllDailyEscapeKey(e) {
+    if (e.key === 'Escape') closeAllDailyModal();
+}
+
+function handleAllDailyOutsideClick(e) {
+    if (e.target.classList.contains('modal')) closeAllDailyModal();
+}
+
+function renderAllDailyCharts(viewMode) {
+    const body = document.getElementById('allDailyBody');
+    const data = window.dailyChartFullData;
+
+    if (!data) {
+        body.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No data available. Please select a date range first.</p>';
+        return;
+    }
+
+    // Cleanup old charts
+    allDailyCharts.forEach(chart => chart.destroy());
+    allDailyCharts = [];
+
+    const BARS_PER_ROW = 60; // Max bars per chart row
+
+    let allKeys = [];
+    let dataMap = {};
+    let weekRanges = {};
+
+    if (viewMode === 'day' && data.allDates) {
+        allKeys = data.allDates;
+        dataMap = data.dailyData;
+    } else if (viewMode === 'week' && data.allWeeks) {
+        allKeys = data.allWeeks;
+        dataMap = data.weeklyData;
+        weekRanges = data.weekRanges || {};
+    } else if (viewMode === 'month' && data.allMonths) {
+        allKeys = data.allMonths;
+        dataMap = data.monthlyData;
+    } else {
+        // Fallback - recalculate from filteredData
+        const chartData = filteredData.filter(t => t.date);
+
+        if (viewMode === 'day') {
+            chartData.forEach(t => {
+                if (t.date) dataMap[t.date] = (dataMap[t.date] || 0) + 1;
+            });
+            allKeys = Object.keys(dataMap).sort();
+        } else if (viewMode === 'week') {
+            chartData.forEach(t => {
+                if (!t.date) return;
+                const d = new Date(t.date + 'T00:00:00');
+                const dayOfWeek = d.getDay();
+                const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+                const weekStart = new Date(d);
+                weekStart.setDate(diff);
+                const weekKey = formatDateLocal(weekStart);
+                dataMap[weekKey] = (dataMap[weekKey] || 0) + 1;
+            });
+            allKeys = Object.keys(dataMap).sort();
+        } else {
+            chartData.forEach(t => {
+                if (!t.date) return;
+                const d = new Date(t.date + 'T00:00:00');
+                const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                dataMap[monthKey] = (dataMap[monthKey] || 0) + 1;
+            });
+            allKeys = Object.keys(dataMap).sort();
+        }
+    }
+
+    if (allKeys.length === 0) {
+        body.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No data available for this view.</p>';
+        return;
+    }
+
+    // Calculate total tickets
+    const totalTickets = allKeys.reduce((sum, key) => sum + (dataMap[key] || 0), 0);
+    const avgPerPeriod = Math.round(totalTickets / allKeys.length);
+
+    // Split into rows
+    const rows = [];
+    for (let i = 0; i < allKeys.length; i += BARS_PER_ROW) {
+        rows.push(allKeys.slice(i, i + BARS_PER_ROW));
+    }
+
+    // Build HTML
+    let html = `
+        <div class="all-daily-stats">
+            <div class="all-daily-stat">
+                <span class="stat-label">Total ${viewMode === 'day' ? 'Days' : viewMode === 'week' ? 'Weeks' : 'Months'}</span>
+                <span class="stat-value">${allKeys.length}</span>
+            </div>
+            <div class="all-daily-stat">
+                <span class="stat-label">Total Tickets</span>
+                <span class="stat-value">${totalTickets.toLocaleString()}</span>
+            </div>
+            <div class="all-daily-stat">
+                <span class="stat-label">Avg per ${viewMode === 'day' ? 'Day' : viewMode === 'week' ? 'Week' : 'Month'}</span>
+                <span class="stat-value">${avgPerPeriod}</span>
+            </div>
+        </div>
+        <div class="daily-chart-rows">
+    `;
+
+    rows.forEach((rowKeys, rowIdx) => {
+        const startKey = rowKeys[0];
+        const endKey = rowKeys[rowKeys.length - 1];
+        let rangeLabel = '';
+
+        if (viewMode === 'day') {
+            const startDate = new Date(startKey + 'T00:00:00');
+            const endDate = new Date(endKey + 'T00:00:00');
+            rangeLabel = `${startDate.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })} - ${endDate.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        } else if (viewMode === 'week') {
+            rangeLabel = `Weeks: ${startKey} to ${endKey}`;
+        } else {
+            rangeLabel = `Months: ${startKey} to ${endKey}`;
+        }
+
+        html += `
+            <div class="daily-chart-row">
+                <h4>${rangeLabel}</h4>
+                <canvas id="allDailyChart_${rowIdx}"></canvas>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    body.innerHTML = html;
+
+    // Create charts for each row
+    rows.forEach((rowKeys, rowIdx) => {
+        const ctx = document.getElementById(`allDailyChart_${rowIdx}`);
+        if (!ctx) return;
+
+        let prevYear = null;
+        const labels = rowKeys.map((key, idx) => {
+            if (viewMode === 'day') {
+                const d = new Date(key + 'T00:00:00');
+                const day = d.getDate();
+                const month = d.toLocaleString('default', { month: 'short' });
+                const year = d.getFullYear();
+
+                if ((day === 1 && d.getMonth() === 0) || (prevYear !== null && year !== prevYear)) {
+                    prevYear = year;
+                    return `${year}\n${month} ${day}`;
+                } else if (day === 1 || idx === 0) {
+                    prevYear = year;
+                    return `${month} ${day}`;
+                }
+                prevYear = year;
+                return day.toString();
+            } else if (viewMode === 'week') {
+                const d = new Date(key + 'T00:00:00');
+                const month = d.toLocaleString('default', { month: 'short' });
+                const day = d.getDate();
+                return `${month} ${day}`;
+            } else {
+                const [year, month] = key.split('-');
+                const d = new Date(parseInt(year), parseInt(month) - 1, 1);
+                return d.toLocaleString('default', { month: 'short', year: '2-digit' });
+            }
+        });
+
+        const chartData = rowKeys.map(key => dataMap[key] || 0);
+
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Tickets',
+                    data: chartData,
+                    backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                    borderColor: '#6366f1',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    datalabels: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                const idx = items[0].dataIndex;
+                                const key = rowKeys[idx];
+
+                                if (viewMode === 'day') {
+                                    const d = new Date(key + 'T00:00:00');
+                                    return d.toLocaleString('default', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+                                } else if (viewMode === 'week') {
+                                    return `Week of ${key}`;
+                                } else {
+                                    const [year, month] = key.split('-');
+                                    const d = new Date(parseInt(year), parseInt(month) - 1, 1);
+                                    return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+                                }
+                            },
+                            label: (ctx) => `Tickets: ${ctx.raw}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: '#a0a0b0',
+                            font: { size: 9 },
+                            maxRotation: 45,
+                            minRotation: 0
+                        },
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#a0a0b0' },
+                        grid: { color: 'rgba(255,255,255,0.05)' }
+                    }
+                }
+            }
+        });
+
+        allDailyCharts.push(chart);
+    });
 }
 
 // ============================================
