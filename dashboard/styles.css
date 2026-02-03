@@ -711,8 +711,8 @@ body {
     border-radius: var(--radius);
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
     z-index: 1000;
-    width: 480px;
-    overflow: hidden;
+    width: 540px;
+    overflow: visible;
 }
 
 .date-picker-dropdown.active {
@@ -752,10 +752,10 @@ body {
 
 .picker-main {
     flex: 1;
-    padding: 24px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 12px;
 }
 
 .custom-range-inputs {
@@ -770,14 +770,22 @@ body {
     gap: 8px;
 }
 
-.range-field label {
+.range-field-single {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.range-field label,
+.range-field-single label {
     font-size: 0.7rem;
     font-weight: 600;
     color: var(--text-secondary);
     letter-spacing: 0.5px;
 }
 
-.range-field input {
+.range-field input,
+.range-field-single input {
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
@@ -788,7 +796,8 @@ body {
     cursor: pointer;
 }
 
-.range-field input:focus {
+.range-field input:focus,
+.range-field-single input:focus {
     outline: none;
     border-color: var(--accent-primary);
 }
@@ -798,9 +807,56 @@ body {
     justify-content: flex-end;
     gap: 12px;
     padding-top: 10px;
+    border-top: 1px solid var(--border-color);
 }
 
-/* Flatpickr customization */
+/* Flatpickr inline calendar customization */
+.picker-main .flatpickr-calendar {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    position: static !important;
+    margin-top: 8px;
+}
+
+.picker-main .flatpickr-calendar.inline {
+    display: block !important;
+}
+
+.picker-main .flatpickr-months {
+    padding: 0 8px;
+}
+
+.picker-main .flatpickr-current-month {
+    font-size: 1rem;
+}
+
+.picker-main .dayContainer {
+    max-width: 100%;
+    width: 100%;
+}
+
+.picker-main .flatpickr-day {
+    max-width: 40px;
+    height: 36px;
+    line-height: 36px;
+    border-radius: 4px;
+}
+
+.picker-main .flatpickr-day.selected,
+.picker-main .flatpickr-day.startRange,
+.picker-main .flatpickr-day.endRange {
+    background: var(--accent-primary) !important;
+    border-color: var(--accent-primary) !important;
+}
+
+.picker-main .flatpickr-day.inRange {
+    background: rgba(99, 102, 241, 0.3) !important;
+    box-shadow: none !important;
+}
+
+/* Flatpickr general customization */
 .flatpickr-calendar {
     background: #1a1a2e !important;
     border: 1px solid var(--border-color) !important;

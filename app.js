@@ -270,8 +270,7 @@ const elements = {
     dateRangeText: document.getElementById('dateRangeText'),
     dateRangeTrigger: document.getElementById('dateRangeTrigger'),
     datePickerDropdown: document.getElementById('datePickerDropdown'),
-    customFrom: document.getElementById('customFrom'),
-    customTo: document.getElementById('customTo'),
+    customDateRange: document.getElementById('customDateRange'),
     applyDates: document.getElementById('applyDates'),
     cancelDates: document.getElementById('cancelDates'),
     agentFilter: document.getElementById('agentFilter'),
@@ -757,9 +756,10 @@ function setQuickDateRange(range) {
         elements.dateRange.value = startStr === endStr ? startStr : `${startStr} to ${endStr}`;
         elements.dateRangeText.textContent = label;
 
-        // Update custom fields for consistency
-        if (elements.customFrom._flatpickr) elements.customFrom._flatpickr.setDate(start);
-        if (elements.customTo._flatpickr) elements.customTo._flatpickr.setDate(today);
+        // Update range picker for consistency
+        if (window.rangePicker) {
+            window.rangePicker.setDate([start, today]);
+        }
 
         // Update active class in sidebar
         document.querySelectorAll('.picker-opt').forEach(opt => {
@@ -771,42 +771,64 @@ function setQuickDateRange(range) {
 }
 
 function initCustomDatePicker() {
+    const dateRangeInput = document.getElementById('customDateRange');
+
+    // Initialize Flatpickr in range mode with inline calendar
+    let rangePicker = flatpickr(dateRangeInput, {
+        mode: 'range',
+        dateFormat: 'Y-m-d',
+        inline: true,
+        theme: 'dark',
+        appendTo: document.querySelector('.picker-main'),
+        static: true,
+        onChange: function (selectedDates, dateStr) {
+            if (selectedDates.length === 2) {
+                dateRangeInput.value = dateStr;
+            }
+        }
+    });
+
+    // Store reference for setQuickDateRange
+    window.rangePicker = rangePicker;
+
     // Toggle dropdown
     elements.dateRangeTrigger.addEventListener('click', (e) => {
         e.stopPropagation();
         elements.datePickerDropdown.classList.toggle('active');
     });
 
-    // Close on click outside
+    // Close on click outside (but not on flatpickr elements)
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('#datePickerCustom')) {
+        const isInsidePicker = e.target.closest('#datePickerCustom') || e.target.closest('.flatpickr-calendar');
+        if (!isInsidePicker) {
             elements.datePickerDropdown.classList.remove('active');
         }
+    });
 
-        // Event delegation for Apply button
-        if (e.target.closest('#applyDates')) {
-            const fromDate = elements.customFrom.value;
-            const toDate = elements.customTo.value;
-            console.log('[DateFilter] apply clicked');
+    // Apply button click
+    document.getElementById('applyDates').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const selectedDates = rangePicker.selectedDates;
 
-            if (fromDate && toDate) {
-                // Commit to global filters using ISO boundaries
-                filters.from = toISOStart(fromDate);
-                filters.to = toISOEnd(toDate);
-                console.log('[DateFilter] committed', filters.from, filters.to);
-                console.log('[DateFilter] range', { from: filters.from, to: filters.to });
+        if (selectedDates.length === 2) {
+            const fromDate = formatDateLocal(selectedDates[0]);
+            const toDate = formatDateLocal(selectedDates[1]);
 
-                elements.dateRange.value = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
-                elements.dateRangeText.textContent = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
+            // Commit to global filters using ISO boundaries
+            filters.from = toISOStart(fromDate);
+            filters.to = toISOEnd(toDate);
+            console.log('[DateFilter] committed', filters.from, filters.to);
 
-                // Mark "Custom" as active
-                document.querySelectorAll('.picker-opt').forEach(opt => {
-                    opt.classList.toggle('active', opt.dataset.range === 'custom');
-                });
+            elements.dateRange.value = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
+            elements.dateRangeText.textContent = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
 
-                loadData();
-                elements.datePickerDropdown.classList.remove('active');
-            }
+            // Mark "Custom" as active
+            document.querySelectorAll('.picker-opt').forEach(opt => {
+                opt.classList.toggle('active', opt.dataset.range === 'custom');
+            });
+
+            loadData();
+            elements.datePickerDropdown.classList.remove('active');
         }
     });
 
@@ -824,18 +846,9 @@ function initCustomDatePicker() {
         });
     });
 
-    // Initialize Flatpickr for "FROM" and "TO" fields
-    const fromPicker = flatpickr(elements.customFrom, {
-        dateFormat: 'Y-m-d',
-        theme: 'dark'
-    });
-    const toPicker = flatpickr(elements.customTo, {
-        dateFormat: 'Y-m-d',
-        theme: 'dark'
-    });
-
     // Cancel button
-    elements.cancelDates.addEventListener('click', () => {
+    elements.cancelDates.addEventListener('click', (e) => {
+        e.stopPropagation();
         elements.datePickerDropdown.classList.remove('active');
     });
 
