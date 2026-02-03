@@ -1300,10 +1300,11 @@ function updateAgentTable() {
             agentSlaData[a].na++;
         }
 
-        // Calculate resolution time for average
-        const resMin = parseResolutionTime(t.resolution_time);
-        if (resMin > 0) {
-            agentSlaData[a].resSum += resMin;
+        // Calculate agent handle time for average (from agent_handle_time_seconds column)
+        const handleTimeSec = t.agent_handle_time_seconds;
+        if (handleTimeSec && handleTimeSec > 0) {
+            // Convert seconds to minutes for formatDuration
+            agentSlaData[a].resSum += (handleTimeSec / 60);
             agentSlaData[a].resCount++;
         }
     });
