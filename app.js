@@ -1969,20 +1969,23 @@ function showAgentDetails(agentName) {
         if (t.intercom_id) {
             return `<a href="https://app.intercom.com/a/inbox/aphmhtyj/inbox/conversation/${t.intercom_id}?view=List" target="_blank" class="ticket-id-link">${ticketId}</a>`;
         }
-        return ticketId;
+        return `<span class="ticket-id-plain">${ticketId}</span>`;
     }
 
-    function renderSection(title, sectionTickets, slaClass) {
+    function renderSection(sectionTitle, sectionTickets, slaClass) {
         if (sectionTickets.length === 0) {
             return `<div class="agent-detail-section">
-                <h4 class="section-title ${slaClass}">${title} (0)</h4>
-                <p class="no-tickets">No tickets</p>
+                <h4 class="section-title ${slaClass}">${sectionTitle} (0)</h4>
+                <div class="section-scroll-area">
+                    <p class="no-tickets">No tickets</p>
+                </div>
             </div>`;
         }
 
         const grouped = groupByDate(sectionTickets);
         let html = `<div class="agent-detail-section">
-            <h4 class="section-title ${slaClass}">${title} (${sectionTickets.length})</h4>`;
+            <h4 class="section-title ${slaClass}">${sectionTitle} (${sectionTickets.length})</h4>
+            <div class="section-scroll-area">`;
 
         grouped.forEach(({ date, tickets: dateTickets }) => {
             html += `<div class="date-group">
@@ -1993,14 +1996,21 @@ function showAgentDetails(agentName) {
             </div>`;
         });
 
-        html += '</div>';
+        html += '</div></div>';
         return html;
     }
 
     body.innerHTML = `
-        ${renderSection('✓ SLA Met', metTickets, 'sla-met-section')}
-        ${renderSection('✗ SLA Missed', missedTickets, 'sla-missed-section')}
+        <div class="agent-detail-columns">
+            ${renderSection('✓ SLA Met', metTickets, 'sla-met-section')}
+            ${renderSection('✗ SLA Missed', missedTickets, 'sla-missed-section')}
+        </div>
     `;
+
+    // Reset scroll position to top
+    body.scrollTop = 0;
+    const scrollAreas = body.querySelectorAll('.section-scroll-area');
+    scrollAreas.forEach(area => area.scrollTop = 0);
 
     modal.classList.add('active');
 
