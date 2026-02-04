@@ -769,6 +769,30 @@ function setQuickDateRange(range) {
             start.setDate(1);
             label = 'This Month';
             break;
+        case 'q1':
+            // Q1: January 1 - March 31 of current year
+            start = new Date(today.getFullYear(), 0, 1); // Jan 1
+            today = new Date(today.getFullYear(), 2, 31, 23, 59, 59, 999); // Mar 31
+            label = 'Q1 (Jan-Mar)';
+            break;
+        case 'q2':
+            // Q2: April 1 - June 30 of current year
+            start = new Date(today.getFullYear(), 3, 1); // Apr 1
+            today = new Date(today.getFullYear(), 5, 30, 23, 59, 59, 999); // Jun 30
+            label = 'Q2 (Apr-Jun)';
+            break;
+        case 'q3':
+            // Q3: July 1 - September 30 of current year
+            start = new Date(today.getFullYear(), 6, 1); // Jul 1
+            today = new Date(today.getFullYear(), 8, 30, 23, 59, 59, 999); // Sep 30
+            label = 'Q3 (Jul-Sep)';
+            break;
+        case 'q4':
+            // Q4: October 1 - December 31 of current year
+            start = new Date(today.getFullYear(), 9, 1); // Oct 1
+            today = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999); // Dec 31
+            label = 'Q4 (Oct-Dec)';
+            break;
     }
 
     if (range !== 'custom') {
