@@ -2086,9 +2086,17 @@ function renderAllDailyCharts(viewMode) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: { top: 20 } },
                 plugins: {
                     legend: { display: false },
-                    datalabels: { display: false },
+                    datalabels: {
+                        display: true,
+                        anchor: 'end',
+                        align: 'end',
+                        color: '#ffffff',
+                        font: { size: 9, weight: 'bold' },
+                        formatter: (value) => value > 0 ? value : ''
+                    },
                     tooltip: {
                         callbacks: {
                             title: (items) => {
