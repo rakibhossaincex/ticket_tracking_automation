@@ -724,7 +724,7 @@ function resetFilters() {
  */
 
 function setQuickDateRange(range) {
-    const today = new Date();
+    let today = new Date();
     today.setHours(23, 59, 59, 999);
     let start = new Date();
     start.setHours(0, 0, 0, 0);
