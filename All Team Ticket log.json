@@ -183,7 +183,13 @@
                     ]
                 },
                 "options": {
-                    "response": {}
+                    "response": {},
+                    "batching": {
+                        "batch": {
+                            "batchSize": 10,
+                            "batchInterval": 500
+                        }
+                    }
                 }
             },
             "id": "fe6bf837-771c-4884-8910-6e0a6b158340",

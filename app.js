@@ -467,8 +467,14 @@ async function loadData() {
                 .range(fromIdx, toIdx);
 
             // Apply Server-Side Filters - using 'date' column (resolved date, YYYY-MM-DD format)
-            if (filters.from) query = query.gte('date', filters.from.split('T')[0]);
-            if (filters.to) query = query.lte('date', filters.to.split('T')[0]);
+            if (filters.from) {
+                const fromDate = filters.from.includes('T') ? filters.from.split('T')[0] : filters.from;
+                query = query.gte('date', fromDate);
+            }
+            if (filters.to) {
+                const toDate = filters.to.includes('T') ? filters.to.split('T')[0] : filters.to;
+                query = query.lte('date', toDate);
+            }
 
             if (filters.agents.size > 0) {
                 query = query.in('ticket_handler_agent_name', Array.from(filters.agents));
@@ -769,9 +775,9 @@ function setQuickDateRange(range) {
         const startStr = formatDateLocal(start);
         const endStr = formatDateLocal(today);
 
-        // Commit to global filters using ISO boundaries
-        filters.from = toISOStart(startStr);
-        filters.to = toISOEnd(endStr);
+        // Store dates as YYYY-MM-DD strings directly (avoid timezone conversion issues)
+        filters.from = startStr;
+        filters.to = endStr;
 
         elements.dateRange.value = startStr === endStr ? startStr : `${startStr} to ${endStr}`;
         elements.dateRangeText.textContent = label;
@@ -834,9 +840,9 @@ function initCustomDatePicker() {
             const fromDate = formatDateLocal(selectedDates[0]);
             const toDate = formatDateLocal(selectedDates[1]);
 
-            // Commit to global filters using ISO boundaries
-            filters.from = toISOStart(fromDate);
-            filters.to = toISOEnd(toDate);
+            // Store dates as YYYY-MM-DD strings directly (avoid timezone conversion issues)
+            filters.from = fromDate;
+            filters.to = toDate;
             console.log('[DateFilter] committed', filters.from, filters.to);
 
             elements.dateRange.value = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
@@ -1498,32 +1504,27 @@ function updateDailyChartOnly() {
             dailyData: dailyData
         };
 
-        // Track previous year for year boundary detection
-        let prevYear = null;
+        // Track previous month for boundary detection (no year shown on main chart)
+        let prevMonth = null;
 
-        // Create smart labels: day number, with month at start of month, year at start of year
+        // Create smart labels: day number, with month when month changes
         labels = sortedDates.map((dateStr, idx) => {
             const d = new Date(dateStr + 'T00:00:00');
             const day = d.getDate();
+            const monthNum = d.getMonth();
             const month = d.toLocaleString('default', { month: 'short' });
-            const year = d.getFullYear();
 
             let label = '';
 
-            // Show year at the start of year (Jan 1) or when year changes
-            if (day === 1 && d.getMonth() === 0) {
-                label = `${year}\n${month} ${day}`;
-            } else if (prevYear !== null && year !== prevYear) {
-                // Year changed mid-stream
-                label = `${year}\n${month} ${day}`;
-            } else if (day === 1 || idx === 0) {
-                // Show month name at the start of month (day 1) or first entry
+            // Show month when it's the first entry OR month changes
+            if (idx === 0 || (prevMonth !== null && monthNum !== prevMonth)) {
                 label = `${month} ${day}`;
-            } else {
+            }
+            else {
                 label = day.toString();
             }
 
-            prevYear = year;
+            prevMonth = monthNum;
             return label;
         });
 
@@ -2041,22 +2042,37 @@ function renderAllDailyCharts(viewMode) {
         if (!ctx) return;
 
         let prevYear = null;
+        let prevMonth = null;
         const labels = rowKeys.map((key, idx) => {
             if (viewMode === 'day') {
                 const d = new Date(key + 'T00:00:00');
                 const day = d.getDate();
+                const monthNum = d.getMonth();
                 const month = d.toLocaleString('default', { month: 'short' });
                 const year = d.getFullYear();
 
-                if ((day === 1 && d.getMonth() === 0) || (prevYear !== null && year !== prevYear)) {
-                    prevYear = year;
-                    return `${year}\n${month} ${day}`;
-                } else if (day === 1 || idx === 0) {
-                    prevYear = year;
-                    return `${month} ${day}`;
+                let label = '';
+
+                // Show year when year changes
+                if (prevYear !== null && year !== prevYear) {
+                    label = `${year}\n${month} ${day}`;
                 }
+                // Show month when it's the first entry OR month changes
+                else if (idx === 0 || (prevMonth !== null && monthNum !== prevMonth)) {
+                    // Also show year if it's January (first month of year)
+                    if (monthNum === 0 && (idx === 0 || prevMonth !== 0)) {
+                        label = `${year}\n${month} ${day}`;
+                    } else {
+                        label = `${month} ${day}`;
+                    }
+                }
+                else {
+                    label = day.toString();
+                }
+
                 prevYear = year;
-                return day.toString();
+                prevMonth = monthNum;
+                return label;
             } else if (viewMode === 'week') {
                 const d = new Date(key + 'T00:00:00');
                 const month = d.toLocaleString('default', { month: 'short' });
