@@ -770,28 +770,28 @@ function setQuickDateRange(range) {
             label = 'This Month';
             break;
         case 'q1':
-            // Q1: January 1 - March 31 of current year
-            start = new Date(today.getFullYear(), 0, 1); // Jan 1
-            today = new Date(today.getFullYear(), 2, 31, 23, 59, 59, 999); // Mar 31
-            label = 'Q1 (Jan-Mar)';
+            // Q1 2026: January 1 - March 31
+            start = new Date(2026, 0, 1); // Jan 1 2026
+            today = new Date(2026, 2, 31, 23, 59, 59, 999); // Mar 31 2026
+            label = 'Q1 2026 (Jan-Mar)';
             break;
         case 'q2':
-            // Q2: April 1 - June 30 of current year
-            start = new Date(today.getFullYear(), 3, 1); // Apr 1
-            today = new Date(today.getFullYear(), 5, 30, 23, 59, 59, 999); // Jun 30
-            label = 'Q2 (Apr-Jun)';
+            // Q2 2026: April 1 - June 30
+            start = new Date(2026, 3, 1); // Apr 1 2026
+            today = new Date(2026, 5, 30, 23, 59, 59, 999); // Jun 30 2026
+            label = 'Q2 2026 (Apr-Jun)';
             break;
         case 'q3':
-            // Q3: July 1 - September 30 of current year
-            start = new Date(today.getFullYear(), 6, 1); // Jul 1
-            today = new Date(today.getFullYear(), 8, 30, 23, 59, 59, 999); // Sep 30
-            label = 'Q3 (Jul-Sep)';
+            // Q3 2025: July 1 - September 30
+            start = new Date(2025, 6, 1); // Jul 1 2025
+            today = new Date(2025, 8, 30, 23, 59, 59, 999); // Sep 30 2025
+            label = 'Q3 2025 (Jul-Sep)';
             break;
         case 'q4':
-            // Q4: October 1 - December 31 of current year
-            start = new Date(today.getFullYear(), 9, 1); // Oct 1
-            today = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999); // Dec 31
-            label = 'Q4 (Oct-Dec)';
+            // Q4 2025: October 1 - December 31
+            start = new Date(2025, 9, 1); // Oct 1 2025
+            today = new Date(2025, 11, 31, 23, 59, 59, 999); // Dec 31 2025
+            label = 'Q4 2025 (Oct-Dec)';
             break;
     }
 
