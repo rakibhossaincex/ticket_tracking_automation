@@ -4,29 +4,51 @@ description: Push dashboard changes to GitHub
 
 # Push Dashboard Changes to GitHub
 
-Use this workflow after making changes to the dashboard files to sync them with GitHub.
+// turbo-all
+
+Use this workflow after making changes to dashboard files to sync them with GitHub.
+
+**Repo:** https://github.com/rakibhossaincex/ticket_tracking_automation
+**Live site:** https://rakibhossaincex.github.io/ticket_tracking_automation/
+**Working directory (repo root):** `C:\Users\MD. Rakib Hossain\.gemini\antigravity\scratch\pstf_automation`
+
+---
 
 ## Steps
 
-// turbo
-1. Stage all changes:
+1. Check what has changed:
 ```powershell
-& "C:\Program Files\Git\bin\git.exe" add -A
+git -C "C:\Users\MD. Rakib Hossain\.gemini\antigravity\scratch\pstf_automation" status
 ```
 
-// turbo
-2. Commit with a descriptive message:
+2. Stage the dashboard files that were modified. For dashboard-only changes:
 ```powershell
-& "C:\Program Files\Git\bin\git.exe" commit -m "YOUR_COMMIT_MESSAGE_HERE"
+git -C "C:\Users\MD. Rakib Hossain\.gemini\antigravity\scratch\pstf_automation" add dashboard/index.html dashboard/styles.css dashboard/app.js
+```
+If other files were also changed and should be included, use `git add -A` instead.
+
+3. Commit with a descriptive message derived from what was changed (do NOT use a placeholder — generate a real message based on the actual changes made):
+```powershell
+git -C "C:\Users\MD. Rakib Hossain\.gemini\antigravity\scratch\pstf_automation" commit -m "COMMIT_MESSAGE"
+```
+Replace `COMMIT_MESSAGE` with a concise summary of what was changed, e.g.:
+- `"Add product type filter to dashboard"`
+- `"Fix SLA percentage calculation for CEx team"`
+- `"Update team SLA chart unit toggle to include minutes"`
+
+4. Push to GitHub:
+```powershell
+git -C "C:\Users\MD. Rakib Hossain\.gemini\antigravity\scratch\pstf_automation" push origin main
 ```
 
-3. Push to GitHub:
+5. Confirm the push succeeded:
 ```powershell
-& "C:\Program Files\Git\bin\git.exe" push origin main
+git -C "C:\Users\MD. Rakib Hossain\.gemini\antigravity\scratch\pstf_automation" log --oneline -3
 ```
+
+---
 
 ## Notes
-- Working directory: `c:\Users\NEXT\.gemini\antigravity\scratch\pstf_automation\dashboard`
-- GitHub repo: https://github.com/rakibhossaincex/ticket_tracking_automation
-- Live site: https://rakibhossaincex.github.io/ticket_tracking_automation/
-- Changes may take 1-2 minutes to appear on the live site after pushing
+- Changes appear on the live site within ~1–2 minutes of a successful push.
+- If push fails with auth error, the user needs to re-authenticate: run `git credential-manager erase` then try again.
+- Never force-push (`--force`) unless the user explicitly requests it.
