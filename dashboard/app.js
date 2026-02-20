@@ -5,8 +5,8 @@
 
 // Supabase Configuration
 const SUPABASE_URL = 'https://umkzssfympyhifdjptwf.supabase.co';
-// Using service_role key for read access (same as workflow)
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVta3pzc2Z5bXB5aGlmZGpwdHdmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Nzk1MzkzMywiZXhwIjoyMDgzNTI5OTMzfQ.uLp84D6LmkkEL5rGgIp-EOuUX_vhNc82n-oHm6qWW-0';
+// Using public anon key for secure client-side read access
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVta3pzc2Z5bXB5aGlmZGpwdHdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NTM5MzMsImV4cCI6MjA4MzUyOTkzM30.yACHrTSkAwiDrALjn_11YS9nQ0R8OnFyDbPOY3nkzAA';
 
 // Create client with a different variable name to avoid conflict with CDN
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -714,14 +714,6 @@ function resetFilters() {
     setQuickDateRange('all');
 }
 
-/**
- * SECURITY NOTE: 
- * The Supabase key used here is currently the 'service_role' key.
- * This should NEVER be exposed in the frontend as it bypasses Row Level Security (RLS).
- * Recommended: 
- * 1. Use the 'anon' key and enable RLS in Supabase.
- * 2. Or proxy requests through a secure Backend/Edge function.
- */
 
 function setQuickDateRange(range) {
     let today = new Date();
