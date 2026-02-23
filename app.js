@@ -262,7 +262,7 @@ function formatDateLocal(date) {
 }
 
 // Charts
-let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart, categoryChart;
+let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart, categoryChart, continentChart, countryChart;
 
 // DOM Elements
 const elements = {
