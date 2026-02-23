@@ -12,6 +12,20 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Global error catcher — shows any JS error visibly on page
+        window.onerror = function (msg, src, line, col, err) {
+            var b = document.getElementById('__errBanner__');
+            if (!b) {
+                b = document.createElement('div');
+                b.id = '__errBanner__';
+                b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#ef4444;color:#fff;font-family:monospace;font-size:13px;padding:10px 16px;white-space:pre-wrap;';
+                document.body.appendChild(b);
+            }
+            b.textContent += '❌ JS ERROR: ' + msg + ' (line ' + line + ')\n';
+            return false;
+        };
+    </script>
 </head>
 
 <body>
