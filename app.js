@@ -1358,28 +1358,32 @@ function updateCharts() {
     if (elements.slaNaNote) elements.slaNaNote.style.display = slaStats.na > 0 ? 'block' : 'none';
 
     // 9. Continent Distribution (Pie)
-    const continentMap = {};
-    filteredData.forEach(t => { const c = t.continent || ''; if (c) continentMap[c] = (continentMap[c] || 0) + 1; });
-    const continentLabels = Object.keys(continentMap).sort((a, b) => continentMap[b] - continentMap[a]);
-    const continentColors = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#ef4444', '#f97316'];
-    continentChart.data.labels = continentLabels;
-    continentChart.data.datasets = [{ data: continentLabels.map(l => continentMap[l]), backgroundColor: continentColors }];
-    continentChart.update();
+    if (continentChart) {
+        const continentMap = {};
+        filteredData.forEach(t => { const c = t.continent || ''; if (c) continentMap[c] = (continentMap[c] || 0) + 1; });
+        const continentLabels = Object.keys(continentMap).sort((a, b) => continentMap[b] - continentMap[a]);
+        const continentColors = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#ef4444', '#f97316'];
+        continentChart.data.labels = continentLabels;
+        continentChart.data.datasets = [{ data: continentLabels.map(l => continentMap[l]), backgroundColor: continentColors }];
+        continentChart.update();
+    }
 
     // 10. Top 10 Countries (Horizontal Bar)
-    const countryMap = {};
-    filteredData.forEach(t => { const c = t.country || ''; if (c) countryMap[c] = (countryMap[c] || 0) + 1; });
-    const sortedCountries = Object.entries(countryMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    countryChart.data.labels = sortedCountries.map(([name]) => name);
-    countryChart.data.datasets = [{
-        data: sortedCountries.map(([, v]) => v),
-        backgroundColor: 'rgba(99, 102, 241, 0.7)',
-        borderColor: '#6366f1',
-        borderWidth: 1
-    }];
-    const cMax = Math.max(...(countryChart.data.datasets[0]?.data || [0]), 0);
-    countryChart.options.scales.x.suggestedMax = Math.ceil((cMax * 1.14) / 10) * 10 || 10;
-    countryChart.update();
+    if (countryChart) {
+        const countryMap = {};
+        filteredData.forEach(t => { const c = t.country || ''; if (c) countryMap[c] = (countryMap[c] || 0) + 1; });
+        const sortedCountries = Object.entries(countryMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+        countryChart.data.labels = sortedCountries.map(([name]) => name);
+        countryChart.data.datasets = [{
+            data: sortedCountries.map(([, v]) => v),
+            backgroundColor: 'rgba(99, 102, 241, 0.7)',
+            borderColor: '#6366f1',
+            borderWidth: 1
+        }];
+        const cMax = Math.max(...(countryChart.data.datasets[0]?.data || [0]), 0);
+        countryChart.options.scales.x.suggestedMax = Math.ceil((cMax * 1.14) / 10) * 10 || 10;
+        countryChart.update();
+    }
 
     // Agent Table update
     updateAgentTable();
