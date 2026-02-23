@@ -302,6 +302,11 @@ let datePicker;
 // ============================================
 
 async function init() {
+    // IMPORTANT: Charts must be initialized FIRST — initCustomDatePicker() calls
+    // setQuickDateRange('all') → loadData() → updateCharts() synchronously on first load.
+    // If charts don't exist yet, updateCharts() crashes and blanks all data.
+    initCharts();
+
     // Initialize custom date picker
     initCustomDatePicker();
 
@@ -364,9 +369,6 @@ async function init() {
             renderTable();
         });
     });
-
-    // Initialize charts
-    initCharts();
 
     // See All Handlers button
     document.getElementById('seeAllHandlers').addEventListener('click', showAllHandlersModal);
