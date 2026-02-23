@@ -439,7 +439,7 @@ async function init() {
 // ============================================
 
 async function loadData() {
-    elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">Loading data...</td></tr>';
+    elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">⏳ Connecting to Supabase...</td></tr>';
 
     // Column used: created_at (Type: timestamp with time zone)
     console.log('[Fetch] starting with filters', JSON.stringify({
@@ -496,6 +496,8 @@ async function loadData() {
 
             if (error) throw error;
 
+            elements.tableBody.innerHTML = `<tr><td colspan="8" class="loading">✅ Page ${page + 1}: got ${data.length} rows (total so far: ${allRecords.length + data.length})...</td></tr>`;
+
             allRecords = allRecords.concat(data);
             hasMore = data.length === queryPageSize;
             page++;
@@ -536,7 +538,7 @@ async function loadData() {
 
     } catch (error) {
         console.error('[Fetch] supabase error', error);
-        elements.tableBody.innerHTML = `<tr><td colspan="8" class="loading">Error: ${error.message}</td></tr>`;
+        elements.tableBody.innerHTML = `<tr><td colspan="8" class="loading">❌ Error: ${error.message || String(error)}</td></tr>`;
     }
 }
 
