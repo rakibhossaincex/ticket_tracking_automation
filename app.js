@@ -5,8 +5,8 @@
 
 // Supabase Configuration
 const SUPABASE_URL = 'https://umkzssfympyhifdjptwf.supabase.co';
-// Using service_role key for read access (same as workflow)
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVta3pzc2Z5bXB5aGlmZGpwdHdmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Nzk1MzkzMywiZXhwIjoyMDgzNTI5OTMzfQ.uLp84D6LmkkEL5rGgIp-EOuUX_vhNc82n-oHm6qWW-0';
+// Using public anon key for secure client-side read access
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVta3pzc2Z5bXB5aGlmZGpwdHdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NTM5MzMsImV4cCI6MjA4MzUyOTkzM30.yACHrTSkAwiDrALjn_11YS9nQ0R8OnFyDbPOY3nkzAA';
 
 // Create client with a different variable name to avoid conflict with CDN
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -714,14 +714,6 @@ function resetFilters() {
     setQuickDateRange('all');
 }
 
-/**
- * SECURITY NOTE: 
- * The Supabase key used here is currently the 'service_role' key.
- * This should NEVER be exposed in the frontend as it bypasses Row Level Security (RLS).
- * Recommended: 
- * 1. Use the 'anon' key and enable RLS in Supabase.
- * 2. Or proxy requests through a secure Backend/Edge function.
- */
 
 function setQuickDateRange(range) {
     let today = new Date();
@@ -1206,6 +1198,64 @@ function initCharts() {
             }
         }
     });
+
+    // 9. Continent Chart (Pie with percentage labels inside+outside)
+    continentChart = new Chart(document.getElementById('continentChart'), {
+        type: 'pie',
+        data: { labels: [], datasets: [{ data: [] }] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 14, right: 40, bottom: 14, left: 40 } },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        color: '#a0a0b0',
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 10,
+                        font: { size: 11 }
+                    }
+                },
+                datalabels: {
+                    display: true,
+                    color: '#ffffff',
+                    font: { weight: 'bold', size: 11 },
+                    formatter: (value, ctx) => {
+                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                        const pct = total ? ((value / total) * 100).toFixed(1) : 0;
+                        return pct >= 3 ? pct + '%' : '';
+                    }
+                }
+            }
+        }
+    });
+
+    // 10. Country Chart (Horizontal Bar – Top 10)
+    countryChart = new Chart(document.getElementById('countryChart'), {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            layout: { padding: { right: 44 } },
+            plugins: {
+                legend: { display: false },
+                datalabels: {
+                    ...OUTSIDE_BAR_LABELS,
+                    align: 'right',
+                    anchor: 'end'
+                }
+            },
+            scales: {
+                x: { beginAtZero: true, ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: '#a0a0b0', font: { size: 11 } }, grid: { display: false } }
+            }
+        }
+    });
 }
 
 function updateCharts() {
@@ -1306,6 +1356,30 @@ function updateCharts() {
 
     // Notes
     if (elements.slaNaNote) elements.slaNaNote.style.display = slaStats.na > 0 ? 'block' : 'none';
+
+    // 9. Continent Distribution (Pie)
+    const continentMap = {};
+    filteredData.forEach(t => { const c = t.continent || ''; if (c) continentMap[c] = (continentMap[c] || 0) + 1; });
+    const continentLabels = Object.keys(continentMap).sort((a, b) => continentMap[b] - continentMap[a]);
+    const continentColors = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#ef4444', '#f97316'];
+    continentChart.data.labels = continentLabels;
+    continentChart.data.datasets = [{ data: continentLabels.map(l => continentMap[l]), backgroundColor: continentColors }];
+    continentChart.update();
+
+    // 10. Top 10 Countries (Horizontal Bar)
+    const countryMap = {};
+    filteredData.forEach(t => { const c = t.country || ''; if (c) countryMap[c] = (countryMap[c] || 0) + 1; });
+    const sortedCountries = Object.entries(countryMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    countryChart.data.labels = sortedCountries.map(([name]) => name);
+    countryChart.data.datasets = [{
+        data: sortedCountries.map(([, v]) => v),
+        backgroundColor: 'rgba(99, 102, 241, 0.7)',
+        borderColor: '#6366f1',
+        borderWidth: 1
+    }];
+    const cMax = Math.max(...(countryChart.data.datasets[0]?.data || [0]), 0);
+    countryChart.options.scales.x.suggestedMax = Math.ceil((cMax * 1.14) / 10) * 10 || 10;
+    countryChart.update();
 
     // Agent Table update
     updateAgentTable();
