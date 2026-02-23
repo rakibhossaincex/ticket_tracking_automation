@@ -395,6 +395,14 @@ body {
     margin-bottom: 20px;
 }
 
+/* Charts Grid - 4-column equal layout */
+.charts-grid-4 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
 /* Charts Grid - 25-25-50 layout (Optional legacy) */
 .charts-grid-25-25-50 {
     display: grid;

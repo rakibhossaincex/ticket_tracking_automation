@@ -200,8 +200,8 @@
             </div>
         </section>
 
-        <!-- Charts Row 3: 3-column layout -->
-        <section class="charts-grid-3">
+        <!-- Charts Row 3: 4-column layout -->
+        <section class="charts-grid-4">
             <div class="chart-card">
                 <h3>SLA Breakdown</h3>
                 <div id="slaChartContainer">
@@ -228,10 +228,14 @@
                 </div>
                 <canvas id="avgResChart"></canvas>
             </div>
+            <div class="chart-card">
+                <h3>Tickets by Continent</h3>
+                <canvas id="continentChart"></canvas>
+            </div>
         </section>
 
-        <!-- Charts Row 4: Standalone Agent SLA Performance -->
-        <section class="charts-grid-full">
+        <!-- Charts Row 4: Agent SLA + Top 10 Countries (50-50) -->
+        <section class="charts-grid-50">
             <div class="chart-card">
                 <div class="chart-header">
                     <h3>Agent SLA Performance</h3>
@@ -258,6 +262,10 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+            <div class="chart-card">
+                <h3>Top 10 Countries</h3>
+                <canvas id="countryChart"></canvas>
             </div>
         </section>
 
