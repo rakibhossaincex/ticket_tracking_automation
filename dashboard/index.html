@@ -5,20 +5,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ticket Analytics Dashboard</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=1771880027">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/css/jsvectormap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/js/jsvectormap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/maps/world.js"></script>
+    <script>
+        // Global error catcher — shows any JS error visibly on page
+        window.onerror = function (msg, src, line, col, err) {
+            var b = document.getElementById('__errBanner__');
+            if (!b) {
+                b = document.createElement('div');
+                b.id = '__errBanner__';
+                b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#ef4444;color:#fff;font-family:monospace;font-size:13px;padding:10px 16px;white-space:pre-wrap;';
+                document.body.appendChild(b);
+            }
+            b.textContent += '❌ JS ERROR: ' + msg + ' (line ' + line + ')\n';
+            return false;
+        };
+    </script>
 </head>
 
 <body>
     <div class="dashboard">
         <!-- Header -->
         <header class="header">
-            <h1>🎫 Ticket Analytics Dashboard</h1>
+            <h1><img src="FundedNext_new_prop_firm_logo-2.avif" alt="FundedNext" class="header-logo"> Ticket Analytics
+                Dashboard</h1>
             <div class="header-actions">
                 <div class="sync-badge">
                     <span class="sync-icon">🕒</span>
@@ -200,8 +218,8 @@
             </div>
         </section>
 
-        <!-- Charts Row 3: 4-column layout -->
-        <section class="charts-grid-4">
+        <!-- Charts Row 3: 3-column layout -->
+        <section class="charts-grid-3">
             <div class="chart-card">
                 <h3>SLA Breakdown</h3>
                 <div id="slaChartContainer">
@@ -228,14 +246,10 @@
                 </div>
                 <canvas id="avgResChart"></canvas>
             </div>
-            <div class="chart-card">
-                <h3>Tickets by Continent</h3>
-                <canvas id="continentChart"></canvas>
-            </div>
         </section>
 
-        <!-- Charts Row 4: Agent SLA + Top 10 Countries (50-50) -->
-        <section class="charts-grid-50">
+        <!-- Charts Row 4: Agent SLA Performance (full width) -->
+        <section class="charts-grid-full">
             <div class="chart-card">
                 <div class="chart-header">
                     <h3>Agent SLA Performance</h3>
@@ -263,10 +277,6 @@
                     </table>
                 </div>
             </div>
-            <div class="chart-card">
-                <h3>Top 10 Countries</h3>
-                <canvas id="countryChart"></canvas>
-            </div>
         </section>
 
         <!-- Charts Row 4: Full width -->
@@ -284,6 +294,21 @@
                     </div>
                 </div>
                 <canvas id="teamSlaChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Charts Row 6: Continent + Countries (50-50) -->
+        <section class="charts-grid-50">
+            <div class="chart-card">
+                <h3>Tickets by Continent</h3>
+                <div id="continentMap"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Top 10 Countries</h3>
+                    <button class="btn-link" id="seeAllCountries">See All Countries →</button>
+                </div>
+                <canvas id="countryChart"></canvas>
             </div>
         </section>
 
@@ -383,6 +408,26 @@
         </div>
     </div>
 
+    <!-- All Countries Modal -->
+    <div id="countriesModal" class="modal">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header">
+                <h2>All Countries</h2>
+                <button class="modal-close" onclick="closeCountriesModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="handlers-pagination">
+                    <button id="countriesPrev" class="btn btn-secondary">← Previous</button>
+                    <span id="countriesPageInfo">Page 1 of 1</span>
+                    <button id="countriesNext" class="btn btn-secondary">Next →</button>
+                </div>
+                <div id="countriesTableContainer" class="handlers-table-container">
+                    <!-- Country rows will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Agent Tickets Detail Modal -->
     <div id="agentDetailModal" class="modal">
         <div class="modal-content agent-detail-modal-content">
@@ -416,7 +461,7 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=1771880027"></script>
 </body>
 
 </html>

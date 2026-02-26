@@ -261,8 +261,46 @@ function formatDateLocal(date) {
     return `${year}-${month}-${day}`;
 }
 
-// Charts
-let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart, categoryChart, continentChart, countryChart;
+let dailyChart, teamChart, slaChart, handlerChart, teamSlaChart, allHandlersChart, productTypeChart, avgResChart, categoryChart, countryChart;
+let continentMapInstance = null;
+let continentCurrentData = {};
+
+// Continent → ISO 3166-1 alpha-2 country codes
+const CONTINENT_COUNTRIES = {
+    'Asia': ['AF', 'AM', 'AZ', 'BH', 'BD', 'BT', 'BN', 'KH', 'CN', 'CY', 'GE', 'IN', 'ID', 'IR', 'IQ', 'IL', 'JP', 'JO', 'KZ', 'KW', 'KG', 'LA', 'LB', 'MY', 'MV', 'MN', 'MM', 'NP', 'KP', 'OM', 'PK', 'PS', 'PH', 'QA', 'SA', 'SG', 'KR', 'LK', 'SY', 'TW', 'TJ', 'TH', 'TL', 'TR', 'TM', 'AE', 'UZ', 'VN', 'YE'],
+    'Europe': ['AL', 'AD', 'AT', 'BY', 'BE', 'BA', 'BG', 'HR', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'XK', 'LV', 'LI', 'LT', 'LU', 'MT', 'MD', 'MC', 'ME', 'NL', 'MK', 'NO', 'PL', 'PT', 'RO', 'RU', 'SM', 'RS', 'SK', 'SI', 'ES', 'SE', 'CH', 'UA', 'GB', 'VA'],
+    'Africa': ['DZ', 'AO', 'BJ', 'BW', 'BF', 'BI', 'CM', 'CV', 'CF', 'TD', 'KM', 'CD', 'CG', 'CI', 'DJ', 'EG', 'GQ', 'ER', 'ET', 'GA', 'GM', 'GH', 'GN', 'GW', 'KE', 'LS', 'LR', 'LY', 'MG', 'MW', 'ML', 'MR', 'MU', 'MA', 'MZ', 'NA', 'NE', 'NG', 'RW', 'ST', 'SN', 'SC', 'SL', 'SO', 'ZA', 'SS', 'SD', 'SZ', 'TZ', 'TG', 'TN', 'UG', 'ZM', 'ZW'],
+    'North America': ['AG', 'BS', 'BB', 'BZ', 'CA', 'CR', 'CU', 'DM', 'DO', 'SV', 'GD', 'GT', 'HT', 'HN', 'JM', 'MX', 'NI', 'PA', 'KN', 'LC', 'VC', 'TT', 'US', 'PR', 'GL'],
+    'South America': ['AR', 'BO', 'BR', 'CL', 'CO', 'EC', 'GY', 'PY', 'PE', 'SR', 'UY', 'VE'],
+    'Oceania': ['AU', 'FJ', 'KI', 'MH', 'FM', 'NR', 'NZ', 'PW', 'PG', 'WS', 'SB', 'TO', 'TV', 'VU'],
+    'Antarctica': ['AQ']
+};
+
+const CONTINENT_REVERSE = {};
+Object.entries(CONTINENT_COUNTRIES).forEach(([name, codes]) =>
+    codes.forEach(code => { CONTINENT_REVERSE[code] = name; })
+);
+
+// Distinct colors per continent
+const CONTINENT_COLORS_MAP = {
+    'Asia': '#6366f1',
+    'Europe': '#22c55e',
+    'Africa': '#f59e0b',
+    'North America': '#3b82f6',
+    'South America': '#10b981',
+    'Oceania': '#f97316',
+    'Antarctica': '#64748b'
+};
+
+// Approximate label centers (left%, top%) on a standard world-map projection
+const CONTINENT_LABEL_POSITIONS = {
+    'Asia': { left: '68%', top: '34%' },
+    'Europe': { left: '51%', top: '22%' },
+    'Africa': { left: '49%', top: '58%' },
+    'North America': { left: '19%', top: '30%' },
+    'South America': { left: '27%', top: '70%' },
+    'Oceania': { left: '81%', top: '72%' },
+};
 
 // DOM Elements
 const elements = {
@@ -375,6 +413,10 @@ async function init() {
 
     // See All Categories button
     document.getElementById('seeAllCategories').addEventListener('click', showAllCategoriesModal);
+
+    // See All Countries button
+    const seeAllCountriesBtn = document.getElementById('seeAllCountries');
+    if (seeAllCountriesBtn) seeAllCountriesBtn.addEventListener('click', showAllCountriesModal);
 
     // Daily Chart View Toggle
     const dailyChartToggle = document.getElementById('dailyChartToggle');
@@ -971,6 +1013,121 @@ function formatMinutes(totalMinutes) {
 // CHARTS
 // ============================================
 
+function initContinentMap() {
+    const container = document.getElementById('continentMap');
+    if (!container || typeof jsVectorMap === 'undefined') return;
+    try {
+        continentMapInstance = new jsVectorMap({
+            selector: '#continentMap',
+            map: 'world',
+            backgroundColor: 'transparent',
+            zoomOnScroll: false,
+            zoomButtons: false,
+            regionStyle: {
+                initial: { fill: '#1e1b4b', stroke: '#2d2b6e', strokeWidth: 0.5, fillOpacity: 1 },
+                hover: { fillOpacity: 0.75, cursor: 'pointer' }
+            },
+            onRegionTooltipShow(event, tooltip, code) {
+                const continent = CONTINENT_REVERSE[code.toUpperCase()];
+                if (continent && continentCurrentData[continent]) {
+                    const count = continentCurrentData[continent];
+                    const total = Object.values(continentCurrentData).reduce((a, b) => a + b, 0);
+                    const pct = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                    tooltip.text(`${continent}\n${count.toLocaleString()} tickets  (${pct}%)`, true);
+                } else if (continent) {
+                    tooltip.text(`${continent}\nNo data`, true);
+                }
+            }
+        });
+    } catch (e) { console.warn('continentMap init failed', e); }
+}
+
+function applyContientColors(data) {
+    // Inject CSS !important rules — CSS !important overrides jsvectormap's inline style.fill
+    // NOTE: jsvectormap world.js uses UPPERCASE keys → data-code values are UPPERCASE (e.g. "US", "CN")
+    let css = '';
+    Object.entries(CONTINENT_COUNTRIES).forEach(([continent, codes]) => {
+        const color = CONTINENT_COLORS_MAP[continent];
+        if (!color || !(data[continent] > 0)) return;
+        const sels = codes
+            .map(c => `#continentMap path[data-code="${c}"]`)   // c is already uppercase
+            .join(',');
+        css += `${sels}{fill:${color}!important}\n`;
+        const hoverSels = codes
+            .map(c => `#continentMap path[data-code="${c}"]:hover`)
+            .join(',');
+        css += `${hoverSels}{opacity:0.65}\n`;
+    });
+    let styleEl = document.getElementById('continent-colors-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'continent-colors-style';
+        document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = css;
+}
+
+function renderContinentLabels(container, data, total) {
+    container.querySelectorAll('.continent-label').forEach(el => el.remove());
+    Object.entries(CONTINENT_LABEL_POSITIONS).forEach(([continent, pos]) => {
+        const count = data[continent] || 0;
+        if (!count) return;
+        const pct = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+        const color = CONTINENT_COLORS_MAP[continent] || '#fff';
+        const label = document.createElement('div');
+        label.className = 'continent-label';
+        label.style.left = pos.left;
+        label.style.top = pos.top;
+        label.innerHTML = `<span class="cont-count" style="color:${color}">${count.toLocaleString()}</span><span class="cont-pct">${pct}%</span>`;
+        container.appendChild(label);
+    });
+}
+
+function updateContinentMap(data) {
+    const container = document.getElementById('continentMap');
+    if (!container || typeof jsVectorMap === 'undefined') return;
+
+    continentCurrentData = { ...data };
+    const total = Object.values(data).reduce((a, b) => a + b, 0);
+
+    // Recreate map
+    if (continentMapInstance) {
+        try { continentMapInstance.destroy(); } catch (_) { }
+        continentMapInstance = null;
+        container.innerHTML = '';
+    }
+
+    try {
+        continentMapInstance = new jsVectorMap({
+            selector: '#continentMap',
+            map: 'world',
+            backgroundColor: 'transparent',
+            zoomOnScroll: false,
+            zoomButtons: false,
+            regionStyle: {
+                initial: { fill: '#1e1b4b', stroke: '#1a1833', strokeWidth: 0.4, fillOpacity: 1 },
+                hover: { cursor: 'pointer' }
+            },
+            onRegionTooltipShow(event, tooltip, code) {
+                const continent = CONTINENT_REVERSE[code.toUpperCase()];
+                if (continent && continentCurrentData[continent]) {
+                    const count = continentCurrentData[continent];
+                    const pct = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+                    tooltip.text(`${continent}\n${count.toLocaleString()} tickets (${pct}%)`, true);
+                } else if (continent) {
+                    tooltip.text(`${continent}\nNo data`, true);
+                }
+            }
+        });
+
+        // Inject CSS !important rules so continent fills override jsvectormap's inline styles
+        applyContientColors(data);
+
+        // Add floating data labels
+        requestAnimationFrame(() => renderContinentLabels(container, data, total));
+    } catch (e) { console.warn('continentMap update failed', e); }
+}
+
 function initCharts() {
     // Register the datalabels plugin
     Chart.register(ChartDataLabels);
@@ -1203,39 +1360,8 @@ function initCharts() {
         }
     });
 
-    // 9. Continent Chart (Pie with percentage labels inside+outside)
-    continentChart = new Chart(document.getElementById('continentChart'), {
-        type: 'pie',
-        data: { labels: [], datasets: [{ data: [] }] },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: { padding: { top: 14, right: 40, bottom: 14, left: 40 } },
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'bottom',
-                    labels: {
-                        color: '#a0a0b0',
-                        usePointStyle: true,
-                        pointStyle: 'circle',
-                        padding: 10,
-                        font: { size: 11 }
-                    }
-                },
-                datalabels: {
-                    display: true,
-                    color: '#ffffff',
-                    font: { weight: 'bold', size: 11 },
-                    formatter: (value, ctx) => {
-                        const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                        const pct = total ? ((value / total) * 100).toFixed(1) : 0;
-                        return pct >= 3 ? pct + '%' : '';
-                    }
-                }
-            }
-        }
-    });
+    // 9. Continent World Map (jsvectormap) — initialised empty; data set by updateContinentMap()
+    initContinentMap();
 
     // 10. Country Chart (Horizontal Bar – Top 10)
     countryChart = new Chart(document.getElementById('countryChart'), {
@@ -1361,16 +1487,10 @@ function updateCharts() {
     // Notes
     if (elements.slaNaNote) elements.slaNaNote.style.display = slaStats.na > 0 ? 'block' : 'none';
 
-    // 9. Continent Distribution (Pie)
-    if (continentChart) {
-        const continentMap = {};
-        filteredData.forEach(t => { const c = t.continent || ''; if (c) continentMap[c] = (continentMap[c] || 0) + 1; });
-        const continentLabels = Object.keys(continentMap).sort((a, b) => continentMap[b] - continentMap[a]);
-        const continentColors = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#ef4444', '#f97316'];
-        continentChart.data.labels = continentLabels;
-        continentChart.data.datasets = [{ data: continentLabels.map(l => continentMap[l]), backgroundColor: continentColors }];
-        continentChart.update();
-    }
+    // 9. Continent Distribution (World Map Heatmap)
+    const continentCounts = {};
+    filteredData.forEach(t => { const c = t.continent || ''; if (c) continentCounts[c] = (continentCounts[c] || 0) + 1; });
+    updateContinentMap(continentCounts);
 
     // 10. Top 10 Countries (Horizontal Bar)
     if (countryChart) {
@@ -2437,6 +2557,82 @@ function handleCategoriesEscapeKey(e) {
 
 function handleCategoriesOutsideClick(e) {
     if (e.target.classList.contains('modal')) closeCategoriesModal();
+}
+
+// ============================================
+// ALL COUNTRIES MODAL
+// ============================================
+
+let allCountriesData = [];
+let countriesPageNum = 1;
+const countriesPageSize = 20;
+
+function showAllCountriesModal() {
+    const modal = document.getElementById('countriesModal');
+
+    // Build sorted country data from filteredData
+    const countryMap = {};
+    filteredData.forEach(t => {
+        const c = t.country || '';
+        if (c) countryMap[c] = (countryMap[c] || 0) + 1;
+    });
+    allCountriesData = Object.entries(countryMap).sort((a, b) => b[1] - a[1]);
+    countriesPageNum = 1;
+    renderCountriesPage();
+
+    modal.classList.add('active');
+
+    document.getElementById('countriesPrev').onclick = () => {
+        if (countriesPageNum > 1) { countriesPageNum--; renderCountriesPage(); }
+    };
+    document.getElementById('countriesNext').onclick = () => {
+        const totalPages = Math.ceil(allCountriesData.length / countriesPageSize);
+        if (countriesPageNum < totalPages) { countriesPageNum++; renderCountriesPage(); }
+    };
+
+    document.addEventListener('keydown', handleCountriesEscapeKey);
+    modal.addEventListener('click', handleCountriesOutsideClick);
+}
+
+function renderCountriesPage() {
+    const totalPages = Math.max(1, Math.ceil(allCountriesData.length / countriesPageSize));
+    document.getElementById('countriesPageInfo').textContent = `Page ${countriesPageNum} of ${totalPages}`;
+    document.getElementById('countriesPrev').disabled = countriesPageNum === 1;
+    document.getElementById('countriesNext').disabled = countriesPageNum >= totalPages;
+
+    const start = (countriesPageNum - 1) * countriesPageSize;
+    const pageItems = allCountriesData.slice(start, start + countriesPageSize);
+    const maxCount = allCountriesData.length > 0 ? allCountriesData[0][1] : 1;
+
+    const container = document.getElementById('countriesTableContainer');
+    container.innerHTML = pageItems.map(([name, count], idx) => {
+        const rank = start + idx + 1;
+        const pct = ((count / maxCount) * 100).toFixed(0);
+        return `
+            <div class="handler-row">
+                <span class="handler-rank">#${rank}</span>
+                <span class="handler-name" title="${name}">${name}</span>
+                <div class="handler-bar-container">
+                    <div class="handler-bar" style="width:${pct}%"></div>
+                </div>
+                <span class="handler-count">${count}</span>
+            </div>`;
+    }).join('');
+}
+
+function closeCountriesModal() {
+    const modal = document.getElementById('countriesModal');
+    modal.classList.remove('active');
+    document.removeEventListener('keydown', handleCountriesEscapeKey);
+    modal.removeEventListener('click', handleCountriesOutsideClick);
+}
+
+function handleCountriesEscapeKey(e) {
+    if (e.key === 'Escape') closeCountriesModal();
+}
+
+function handleCountriesOutsideClick(e) {
+    if (e.target.classList.contains('modal')) closeCountriesModal();
 }
 
 // ============================================
