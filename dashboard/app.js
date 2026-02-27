@@ -365,6 +365,9 @@ async function init() {
     });
     elements.prevPage.addEventListener('click', () => changePage(-1));
     elements.nextPage.addEventListener('click', () => changePage(1));
+    // Top pagination bar
+    document.querySelector('.topPrevPage')?.addEventListener('click', () => changePage(-1));
+    document.querySelector('.topNextPage')?.addEventListener('click', () => changePage(1));
     elements.exportCsv.addEventListener('click', exportToCsv);
 
     // Team SLA unit toggle
@@ -1799,11 +1802,19 @@ function renderTableFromData(tableData) {
         });
     }
 
-    // Update pagination
+    // Update pagination (bottom)
     const totalPages = Math.ceil(total / pageSize) || 1;
-    elements.pageInfo.textContent = `Page ${currentPage} of ${totalPages} (${total.toLocaleString()} tickets)`;
+    const pageText = `Page ${currentPage} of ${totalPages} (${total.toLocaleString()} tickets)`;
+    elements.pageInfo.textContent = pageText;
     elements.prevPage.disabled = currentPage === 1;
     elements.nextPage.disabled = currentPage >= totalPages;
+    // Update pagination (top)
+    const topInfo = document.querySelector('.topPageInfo');
+    const topPrev = document.querySelector('.topPrevPage');
+    const topNext = document.querySelector('.topNextPage');
+    if (topInfo) topInfo.textContent = pageText;
+    if (topPrev) topPrev.disabled = currentPage === 1;
+    if (topNext) topNext.disabled = currentPage >= totalPages;
 }
 
 // Keep old renderTable as a wrapper for compat
