@@ -361,7 +361,7 @@ async function init() {
     elements.pageSize.addEventListener('change', (e) => {
         pageSize = parseInt(e.target.value);
         currentPage = 1;
-        renderTable();
+        changePage(0);
     });
     elements.prevPage.addEventListener('click', () => changePage(-1));
     elements.nextPage.addEventListener('click', () => changePage(1));
@@ -1813,14 +1813,17 @@ function renderTable() {
 }
 
 async function changePage(delta) {
-    currentPage += delta;
-    elements.tableBody.innerHTML = '<tr><td colspan="7" class="loading">⏳ Loading...</td></tr>';
+    const totalPages = Math.ceil(tableTotal / pageSize) || 1;
+    const newPage = currentPage + delta;
+    if (newPage < 1 || newPage > totalPages) return;
+    currentPage = newPage;
+    elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">⏳ Loading...</td></tr>';
     try {
         const tableData = await loadTablePage();
         tableTotal = tableData.total || 0;
         renderTableFromData(tableData);
     } catch (e) {
-        elements.tableBody.innerHTML = `<tr><td colspan="7" class="loading">❌ Error: ${e.message}</td></tr>`;
+        elements.tableBody.innerHTML = `<tr><td colspan="8" class="loading">❌ Error: ${e.message}</td></tr>`;
     }
 }
 // Old render logic removed
