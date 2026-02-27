@@ -736,6 +736,7 @@ function resetFilters() {
         }
     });
 
+    filters.search = '';
     elements.searchInput.value = '';
 
     updateFilterUI();
