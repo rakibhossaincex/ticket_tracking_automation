@@ -17,16 +17,23 @@
     <script src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/maps/world.js"></script>
     <script>
         // Global error catcher — shows any JS error visibly on page
-        window.onerror = function (msg, src, line, col, err) {
+        function __showErr(msg) {
             var b = document.getElementById('__errBanner__');
             if (!b) {
                 b = document.createElement('div');
                 b.id = '__errBanner__';
-                b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#ef4444;color:#fff;font-family:monospace;font-size:13px;padding:10px 16px;white-space:pre-wrap;';
+                b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#ef4444;color:#fff;font-family:monospace;font-size:13px;padding:10px 16px;white-space:pre-wrap;max-height:40vh;overflow:auto;';
                 document.body.appendChild(b);
             }
-            b.textContent += '❌ JS ERROR: ' + msg + ' (line ' + line + ')\n';
+            b.textContent += msg + '\n';
+        }
+        window.onerror = function (msg, src, line, col, err) {
+            __showErr('❌ JS ERROR: ' + msg + ' (line ' + line + ')');
             return false;
+        };
+        window.onunhandledrejection = function (e) {
+            var msg = e.reason ? (e.reason.message || String(e.reason)) : 'Unknown rejection';
+            __showErr('❌ PROMISE ERROR: ' + msg);
         };
     </script>
 </head>
