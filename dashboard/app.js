@@ -16,6 +16,8 @@ console.log('✅ Supabase client initialized');
 // State
 let allData = [];
 let filteredData = [];
+let aggregates = null;  // Pre-aggregated data from Supabase RPC
+let tableTotal = 0;     // Total rows for server-side pagination
 let currentPage = 1;
 let pageSize = 25;
 let sortColumn = 'date';
@@ -480,126 +482,108 @@ async function init() {
 // DATA LOADING
 // ============================================
 
-async function loadData() {
-    elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">⏳ Connecting to Supabase...</td></tr>';
+// Build filter params for RPC calls
+function buildRpcParams() {
+    const fromDate = filters.from ? (filters.from.includes('T') ? filters.from.split('T')[0] : filters.from) : null;
+    const toDate = filters.to ? (filters.to.includes('T') ? filters.to.split('T')[0] : filters.to) : null;
 
-    // Column used: created_at (Type: timestamp with time zone)
-    console.log('[Fetch] starting with filters', JSON.stringify({
-        from: filters.from,
-        to: filters.to,
-        agents: Array.from(filters.agents),
-        teams: Array.from(filters.teams),
-        categories: Array.from(filters.categories),
-        sla: filters.sla,
-        search: filters.search
-    }));
+    // Only include parameters that actually have values
+    // PostgREST 404s if JSON null is passed for a TEXT[] array parameter
+    const params = {};
+    if (fromDate) params.p_from = fromDate;
+    if (toDate) params.p_to = toDate;
+    if (filters.agents.size > 0) params.p_agents = Array.from(filters.agents);
+    if (filters.teams.size > 0) params.p_teams = Array.from(filters.teams);
+    if (filters.categories.size > 0) params.p_categories = Array.from(filters.categories);
+    if (filters.sla && filters.sla.size > 0) params.p_sla = Array.from(filters.sla);
+    if (filters.search) params.p_search = filters.search;
+
+    return params;
+}
+
+async function loadAggregates() {
+    const params = buildRpcParams();
+    console.log('[RPC] dashboard_aggregates', params);
+    const { data, error } = await supabaseClient.rpc('dashboard_aggregates', params);
+    if (error) throw error;
+    return data;
+}
+
+async function loadFilterOptions() {
+    const { data, error } = await supabaseClient.rpc('dashboard_filter_options');
+    if (error) throw error;
+    return data;
+}
+
+async function loadTablePage() {
+    const params = buildRpcParams();
+    params.p_sort_col = sortColumn;
+    params.p_sort_dir = sortDirection;
+    params.p_offset = (currentPage - 1) * pageSize;
+    params.p_limit = pageSize;
+    console.log('[RPC] dashboard_table_page', params);
+    const { data, error } = await supabaseClient.rpc('dashboard_table_page', params);
+    if (error) throw error;
+    return data;
+}
+
+async function loadData() {
+    elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">⏳ Loading dashboard...</td></tr>';
 
     try {
-        let allRecords = [];
-        let page = 0;
-        const queryPageSize = 1000;
-        let hasMore = true;
+        // Load aggregates and table page in parallel
+        const [aggData, tableData] = await Promise.all([
+            loadAggregates(),
+            loadTablePage()
+        ]);
 
-        while (hasMore) {
-            const fromIdx = page * queryPageSize;
-            const toIdx = fromIdx + queryPageSize - 1;
+        aggregates = aggData;
+        tableTotal = tableData.total || 0;
 
-            let query = supabaseClient
-                .from('ticket_logs')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .range(fromIdx, toIdx);
+        console.log('[RPC] aggregates loaded, total:', aggregates.total);
 
-            // Apply Server-Side Filters - using 'date' column (resolved date, YYYY-MM-DD format)
-            if (filters.from) {
-                const fromDate = filters.from.includes('T') ? filters.from.split('T')[0] : filters.from;
-                query = query.gte('date', fromDate);
-            }
-            if (filters.to) {
-                const toDate = filters.to.includes('T') ? filters.to.split('T')[0] : filters.to;
-                query = query.lte('date', toDate);
-            }
-
-            if (filters.agents.size > 0) {
-                query = query.in('ticket_handler_agent_name', Array.from(filters.agents));
-            }
-            if (filters.teams.size > 0) {
-                query = query.in('current_team', Array.from(filters.teams));
-            }
-            if (filters.categories.size > 0) {
-                query = query.in('issue_category', Array.from(filters.categories));
-            }
-            if (filters.sla && filters.sla.size > 0) {
-                const slaVals = Array.from(filters.sla).join(',');
-                query = query.or(`ticket_sla_status.in.(${slaVals}),sla.in.(${slaVals})`);
-            }
-
-            const { data, error } = await query;
-
-            if (error) throw error;
-
-            elements.tableBody.innerHTML = `<tr><td colspan="8" class="loading">✅ Page ${page + 1}: got ${data.length} rows (total so far: ${allRecords.length + data.length})...</td></tr>`;
-
-            allRecords = allRecords.concat(data);
-            hasMore = data.length === queryPageSize;
-            page++;
-        }
-
-        console.log('[Fetch] got rows:', allRecords.length);
-
-        if (allRecords.length === 0) {
-            elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">No tickets found in database.</td></tr>';
-            allData = [];
-            filteredData = [];
+        if (aggregates.total === 0) {
+            elements.tableBody.innerHTML = '<tr><td colspan="8" class="loading">No tickets found.</td></tr>';
             updateDashboard();
             return;
         }
 
-        allData = allRecords;
-
-        // Final Client-Side Search (since fuzzy/keyword search is easier locally for small-ish sets)
-        if (filters.search) {
-            filteredData = allData.filter(ticket => {
-                const searchFields = [
-                    ticket.ticket_id,
-                    ticket.description_last_ticket_note,
-                    ticket.issue_category
-                ].join(' ').toLowerCase();
-                return searchFields.includes(filters.search.toLowerCase());
-            });
-        } else {
-            filteredData = [...allData];
-        }
-
-        // Populate filter options (agents/teams) only on first real load or if empty
-        // In a real server-side only app, these would come from separate queries
-        // But for this dashboard, we derive them from the current result set
+        // Populate filter dropdowns (once)
         populateFilters();
 
+        // Render dashboard from pre-aggregated data
         updateDashboard();
 
+        // Render table from server-paginated rows
+        renderTableFromData(tableData);
+
     } catch (error) {
-        console.error('[Fetch] supabase error', error);
-        elements.tableBody.innerHTML = `<tr><td colspan="8" class="loading">❌ Error: ${error.message || String(error)}</td></tr>`;
+        console.error('[RPC] error', error);
+        const errMsg = error.message || String(error);
+        elements.tableBody.innerHTML = `<tr><td colspan="8" class="loading">❌ Error: ${errMsg}</td></tr>`;
+        // Also show in the global error banner so the user can see it
+        if (typeof __showErr === 'function') __showErr('❌ RPC ERROR in loadData: ' + errMsg);
     }
 }
 
 let filtersInitialized = false;
 
-function populateFilters() {
+async function populateFilters() {
     if (filtersInitialized) return;
 
-    // Get unique agents, teams, and categories from master set (initial load)
-    const agents = [...new Set(allData.map(t => t.ticket_handler_agent_name).filter(Boolean))].sort();
-    const teams = [...new Set(allData.map(t => t.current_team).filter(Boolean))].sort();
-    const categories = [...new Set(allData.map(t => t.issue_category).filter(Boolean))].sort();
+    try {
+        const opts = await loadFilterOptions();
+        const agents = opts.agents || [];
+        const teams = opts.teams || [];
+        const categories = opts.categories || [];
 
-    if (agents.length > 0 || teams.length > 0 || categories.length > 0) {
-        initSearchableDropdown('agent', agents, 'All Agents');
-        initSearchableDropdown('team', teams, 'All Teams');
-        initSearchableDropdown('category', categories, 'All Categories');
-        filtersInitialized = true;
-    }
+        if (agents.length > 0 || teams.length > 0 || categories.length > 0) {
+            initSearchableDropdown('agent', agents, 'All Agents');
+            initSearchableDropdown('team', teams, 'All Teams');
+            initSearchableDropdown('category', categories, 'All Categories');
+            filtersInitialized = true;
+        }
+    } catch (e) { console.warn('Failed to load filter options', e); }
 }
 
 function initSearchableDropdown(type, options, placeholder) {
@@ -731,7 +715,7 @@ function applyFilters() {
 
     updateFilterUI();
     currentPage = 1;
-    loadData();
+    loadData();  // Reloads aggregates + table page from server
 }
 
 function resetFilters() {
@@ -949,42 +933,39 @@ function initCustomDatePicker() {
 // ============================================
 
 function updateDashboard() {
+    if (!aggregates) return;
     updateMetrics();
     updateCharts();
-    renderTable();
+    // Table is rendered separately via renderTableFromData
 }
 
 function updateMetrics() {
-    const stats = calculateSlaStats(filteredData);
+    if (!aggregates) return;
+    const total = aggregates.total || 0;
+    const met = aggregates.sla_met || 0;
+    const missed = aggregates.sla_missed || 0;
 
-    elements.totalTickets.textContent = stats.total.toLocaleString();
+    elements.totalTickets.textContent = total.toLocaleString();
 
-    // SLA percentages with ticket counts
-    elements.slaMet.textContent = stats.total > 0 ? `${Math.round(stats.metPct)}%` : '-';
-    // Missed % is Missed / Total
-    const missedPct = stats.total ? (stats.missed / stats.total) * 100 : 0;
-    elements.slaMissed.textContent = stats.total > 0 ? `${Math.round(missedPct)}%` : '-';
+    // SLA percentages
+    const metPct = total ? (met / total) * 100 : 0;
+    const missedPct = total ? (missed / total) * 100 : 0;
+    elements.slaMet.textContent = total > 0 ? `${Math.round(metPct)}%` : '-';
+    elements.slaMissed.textContent = total > 0 ? `${Math.round(missedPct)}%` : '-';
 
     // SLA ticket counts
-    if (elements.slaMetCount) elements.slaMetCount.textContent = `(${stats.met})`;
-    if (elements.slaMissedCount) elements.slaMissedCount.textContent = `(${stats.missed})`;
+    if (elements.slaMetCount) elements.slaMetCount.textContent = `(${met})`;
+    if (elements.slaMissedCount) elements.slaMissedCount.textContent = `(${missed})`;
 
     // Average resolution time
-    const avgRes = calculateAverageResolution();
-    elements.avgResolution.textContent = avgRes || '-';
+    const avgMin = aggregates.avg_resolution_minutes;
+    elements.avgResolution.textContent = avgMin ? formatMinutes(avgMin) : '-';
 }
 
 function calculateAverageResolution() {
-    const ticketsWithTime = filteredData.filter(t => t.resolution_time);
-    if (ticketsWithTime.length === 0) return null;
-
-    let totalMinutes = 0;
-    ticketsWithTime.forEach(t => {
-        totalMinutes += parseResolutionTime(t.resolution_time);
-    });
-
-    const avgMinutes = totalMinutes / ticketsWithTime.length;
-    return formatMinutes(avgMinutes);
+    if (!aggregates) return null;
+    const avgMin = aggregates.avg_resolution_minutes;
+    return avgMin ? formatMinutes(avgMin) : null;
 }
 
 function parseResolutionTime(timeStr) {
@@ -1389,15 +1370,16 @@ function initCharts() {
 }
 
 function updateCharts() {
-    // 1. Daily Volume - use separate function for toggle support
+    if (!aggregates) return;
+
+    // 1. Daily Volume
     updateDailyChartOnly();
 
-    // 2. Team Distribution (Leader Lines)
-    const teamDataMap = {};
-    filteredData.forEach(t => { if (t.current_team) teamDataMap[t.current_team] = (teamDataMap[t.current_team] || 0) + 1; });
+    // 2. Team Distribution (Doughnut)
+    const teamDataMap = aggregates.teams || {};
     const teamLabels = Object.keys(teamDataMap).sort((a, b) => teamDataMap[b] - teamDataMap[a]);
 
-    teamChart._fullLabels = teamLabels; // Store for tooltip
+    teamChart._fullLabels = teamLabels;
     teamChart.data.labels = teamLabels.map(getShortTeamName);
     const teamColors = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#ef4444', '#f97316', '#eab308', '#22c55e'];
     teamChart.data.datasets = [{
@@ -1409,18 +1391,19 @@ function updateCharts() {
     renderTeamDistList(teamLabels, teamLabels.map(l => teamDataMap[l]), teamColors);
 
     // 3. SLA Breakdown (Pie)
-    const slaStats = calculateSlaStats(filteredData);
+    const slaMet = aggregates.sla_met || 0;
+    const slaMissed = aggregates.sla_missed || 0;
+    const slaNa = aggregates.sla_na || 0;
     slaChart.data.labels = ['Met', 'Missed', 'N/A'];
     slaChart.data.datasets = [{
-        data: [slaStats.met, slaStats.missed, slaStats.na],
+        data: [slaMet, slaMissed, slaNa],
         backgroundColor: ['#22c55e', '#ef4444', '#6b7280']
     }];
     slaChart.update();
 
     // 4. Top 10 Handlers
-    const handlerDataMap = {};
-    filteredData.forEach(t => { if (t.ticket_handler_agent_name) handlerDataMap[t.ticket_handler_agent_name] = (handlerDataMap[t.ticket_handler_agent_name] || 0) + 1; });
-    const sortedHandlers = Object.entries(handlerDataMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const handlersMap = aggregates.handlers || {};
+    const sortedHandlers = Object.entries(handlersMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
     handlerChart.data.labels = sortedHandlers.map(h => h[0]);
     handlerChart.data.datasets = [{
         data: sortedHandlers.map(h => h[1]),
@@ -1435,14 +1418,13 @@ function updateCharts() {
     handlerChart.update();
 
     // Set global data for modals
-    window.allHandlersData = Object.entries(handlerDataMap).sort((a, b) => b[1] - a[1]);
+    window.allHandlersData = Object.entries(handlersMap).sort((a, b) => b[1] - a[1]);
 
     // 5. Team SLA Performance & Avg Resolution
     updateTeamSlaChartOnly();
 
     // 6. Category Distribution
-    const catMap = {};
-    filteredData.forEach(t => { const c = t.issue_category || 'Uncategorized'; catMap[c] = (catMap[c] || 0) + 1; });
+    const catMap = aggregates.categories || {};
     const sortedCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
     categoryChart.data._fullLabels = sortedCats.map(c => c[0]);
@@ -1464,15 +1446,7 @@ function updateCharts() {
     window.allCategoriesData = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
 
     // 7. Product Type Distribution
-    const ptMap = {};
-    filteredData.forEach(t => {
-        let pt = t.product_type || '';
-        const lower = pt.toLowerCase();
-        if (lower.includes('cfd') || lower.includes('stellar') || lower.includes('instant')) pt = 'CFD';
-        else if (lower.includes('futures')) pt = 'Futures';
-        else if (!pt) return;
-        ptMap[pt] = (ptMap[pt] || 0) + 1;
-    });
+    const ptMap = aggregates.product_types || {};
     const ptLabels = Object.keys(ptMap).sort();
     productTypeChart.data.labels = ptLabels;
     productTypeChart.data.datasets = [{
@@ -1485,17 +1459,15 @@ function updateCharts() {
     updateAvgResChartOnly();
 
     // Notes
-    if (elements.slaNaNote) elements.slaNaNote.style.display = slaStats.na > 0 ? 'block' : 'none';
+    if (elements.slaNaNote) elements.slaNaNote.style.display = slaNa > 0 ? 'block' : 'none';
 
     // 9. Continent Distribution (World Map Heatmap)
-    const continentCounts = {};
-    filteredData.forEach(t => { const c = t.continent || ''; if (c) continentCounts[c] = (continentCounts[c] || 0) + 1; });
+    const continentCounts = aggregates.continents || {};
     updateContinentMap(continentCounts);
 
     // 10. Top 10 Countries (Horizontal Bar)
     if (countryChart) {
-        const countryMap = {};
-        filteredData.forEach(t => { const c = t.country || ''; if (c) countryMap[c] = (countryMap[c] || 0) + 1; });
+        const countryMap = aggregates.countries || {};
         const sortedCountries = Object.entries(countryMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
         countryChart.data.labels = sortedCountries.map(([name]) => name);
         countryChart.data.datasets = [{
@@ -1541,51 +1513,18 @@ function renderTeamDistList(labels, counts, colors) {
 }
 
 function updateAgentTable() {
-    const agentSlaData = {};
-    const agentTickets = {}; // Store tickets per agent for modal
+    if (!aggregates || !aggregates.agent_sla) return;
 
-    filteredData.forEach(t => {
-        const a = t.ticket_handler_agent_name;
-        if (!a) return;
-        if (!agentSlaData[a]) {
-            agentSlaData[a] = { total: 0, met: 0, missed: 0, na: 0, resSum: 0, resCount: 0 };
-            agentTickets[a] = [];
-        }
-        agentSlaData[a].total++;
-        agentTickets[a].push(t);
+    const agentSlaArr = aggregates.agent_sla;
 
-        // AGENT SLA PERFORMANCE: Use the agent_sla_status column directly
-        const status = t.agent_sla_status;
-
-        if (status === 'Met') {
-            agentSlaData[a].met++;
-        } else if (status === 'Missed') {
-            agentSlaData[a].missed++;
-        } else {
-            agentSlaData[a].na++;
-        }
-
-        // Calculate agent handle time for average (from agent_handle_time_seconds column)
-        const handleTimeSec = t.agent_handle_time_seconds;
-        if (handleTimeSec && handleTimeSec > 0) {
-            // Convert seconds to minutes for formatDuration
-            agentSlaData[a].resSum += (handleTimeSec / 60);
-            agentSlaData[a].resCount++;
-        }
-    });
-
-    // Store for modal access
-    window.agentTicketsData = agentTickets;
-
-    const sortedAgents = Object.keys(agentSlaData)
-        .map(name => {
-            const d = agentSlaData[name];
-            const totalSla = d.met + d.missed; // Percentage should be based on tickets with an actual Met/Missed status
+    const sortedAgents = agentSlaArr
+        .map(d => {
+            const totalSla = (d.met || 0) + (d.missed || 0);
             const pct = totalSla ? Math.round((d.met / totalSla) * 100) : 0;
-            const avgResMin = d.resCount > 0 ? (d.resSum / d.resCount) : 0;
-            return { name, ...d, pct, avgResMin };
+            const avgResMin = d.avg_handle_min || 0;
+            return { name: d.name, total: d.total, met: d.met || 0, missed: d.missed || 0, na: d.na || 0, pct, avgResMin };
         })
-        .sort((a, b) => b.total - a.total) // Still sorting by volume primarily, or could sort by b.pct - a.pct
+        .sort((a, b) => b.total - a.total)
         .slice(0, 20);
 
     if (elements.agentSlaBody) {
@@ -1604,6 +1543,7 @@ function updateAgentTable() {
         }).join('');
     }
 }
+// Leftover logic removed
 
 function renderTeamSlaMiniLegend() {
     const el = document.getElementById('teamSlaMiniLegend');
@@ -1615,35 +1555,22 @@ function renderTeamSlaMiniLegend() {
 }
 
 function updateTeamSlaChartOnly() {
-    if (!teamSlaChart) return;
+    if (!teamSlaChart || !aggregates || !aggregates.team_sla) return;
 
-    const teamStats = {};
-    filteredData.forEach(t => {
-        const team = t.current_team;
-        if (!team) return;
-        if (!teamStats[team]) teamStats[team] = { met: 0, missed: 0, na: 0, resMins: [] };
+    const teamSlaArr = aggregates.team_sla;
+    const teamsSorted = teamSlaArr.map(t => t.team).sort();
 
-        // Use ticket_sla_status
-        const status = t.ticket_sla_status || t.sla;
-        if (status === 'Met') teamStats[team].met++;
-        else if (status === 'Missed') teamStats[team].missed++;
-        else teamStats[team].na++;
+    const teamLookup = {};
+    teamSlaArr.forEach(t => { teamLookup[t.team] = t; });
 
-        const m = parseResolutionTime(t.resolution_time);
-        if (m > 0) teamStats[team].resMins.push(m);
-    });
-
-    const teamsSorted = Object.keys(teamStats).sort();
     const slaPcts = teamsSorted.map(t => {
-        const s = teamStats[t];
-        const total = s.met + s.missed + s.na;
+        const s = teamLookup[t];
+        const total = (s.met || 0) + (s.missed || 0) + (s.na || 0);
         return total ? Math.round((s.met / total) * 100) : 0;
     });
 
     const resAvgsMin = teamsSorted.map(t => {
-        const arr = teamStats[t].resMins;
-        if (!arr.length) return 0;
-        return (arr.reduce((a, b) => a + b, 0) / arr.length);
+        return teamLookup[t].avg_res || 0;
     });
 
     teamSlaChart.data.labels = teamsSorted.map(getShortTeamName);
@@ -1668,25 +1595,16 @@ function updateTeamSlaChartOnly() {
     renderTeamSlaMiniLegend();
     teamSlaChart.update();
 }
+// Leftover logic removed
 
 function updateAvgResChartOnly() {
-    if (!avgResChart) return;
+    if (!avgResChart || !aggregates) return;
 
-    const wh = { sum: 0, count: 0 }, nwh = { sum: 0, count: 0 };
-    filteredData.forEach(t => {
-        const team = (t.current_team || "").toLowerCase();
-        const is24x7 = team.includes("pro solution") || team.includes("cex reversal") || team.includes("ticket dependencies");
-        const m = parseResolutionTime(t.resolution_time);
-        if (m > 0) {
-            if (is24x7 || t.resolved_during_office_hours === true) { wh.sum += m; wh.count++; }
-            else if (t.resolved_during_office_hours === false) { nwh.sum += m; nwh.count++; }
-        }
-    });
+    const arw = aggregates.avg_res_work || {};
+    const whAvg = arw.work_count > 0 ? (arw.work_sum / arw.work_count) : 0;
+    const nwhAvg = arw.nonwork_count > 0 ? (arw.nonwork_sum / arw.nonwork_count) : 0;
 
-    const dataMin = [
-        wh.count ? (wh.sum / wh.count) : 0,
-        nwh.count ? (nwh.sum / nwh.count) : 0
-    ];
+    const dataMin = [whAvg, nwhAvg];
 
     avgResChart.data.labels = ['Work Hours', 'After Hours'];
     avgResChart.data.datasets = [{ data: dataMin, backgroundColor: ['#22c55e', '#6366f1'] }];
@@ -1699,136 +1617,91 @@ function updateAvgResChartOnly() {
 
     avgResChart.update();
 }
+// Leftover logic removed
 
 function updateDailyChartOnly() {
-    if (!dailyChart) return;
+    if (!dailyChart || !aggregates) return;
 
     const viewMode = uiUnits.dailyView; // 'day', 'week', 'month'
-
-    // Use the globally filtered data (already filtered by selected date range)
-    const chartData = filteredData.filter(t => t.date);
+    const dailyData = aggregates.daily || {};
 
     let labels = [];
     let data = [];
-    let fullDates = []; // Store full dates for tooltip
+    let fullDates = [];
 
     if (viewMode === 'day') {
-        // Group by day
-        const dailyData = {};
-        chartData.forEach(t => {
-            if (t.date) dailyData[t.date] = (dailyData[t.date] || 0) + 1;
-        });
-
         const allSortedDates = Object.keys(dailyData).sort();
-
-        // Limit to last 30 days within the selected range
         const sortedDates = allSortedDates.slice(-30);
 
-        // Store full data for modal
-        window.dailyChartFullData = {
-            allDates: allSortedDates,
-            dailyData: dailyData
-        };
+        window.dailyChartFullData = { allDates: allSortedDates, dailyData: dailyData };
 
-        // Track previous month for boundary detection (no year shown on main chart)
         let prevMonth = null;
-
-        // Create smart labels: day number, with month when month changes
         labels = sortedDates.map((dateStr, idx) => {
             const d = new Date(dateStr + 'T00:00:00');
             const day = d.getDate();
             const monthNum = d.getMonth();
             const month = d.toLocaleString('default', { month: 'short' });
-
             let label = '';
-
-            // Show month when it's the first entry OR month changes
             if (idx === 0 || (prevMonth !== null && monthNum !== prevMonth)) {
                 label = `${month} ${day}`;
-            }
-            else {
+            } else {
                 label = day.toString();
             }
-
             prevMonth = monthNum;
             return label;
         });
 
         data = sortedDates.map(d => dailyData[d]);
-        fullDates = sortedDates; // Store for tooltip
+        fullDates = sortedDates;
 
     } else if (viewMode === 'week') {
-        // Group by week
         const weeklyData = {};
-        const weekRanges = {}; // Store week date ranges for tooltip
-        chartData.forEach(t => {
-            if (!t.date) return;
-            const d = new Date(t.date + 'T00:00:00');
-            // Get ISO week start (Monday)
+        const weekRanges = {};
+        Object.entries(dailyData).forEach(([dateStr, cnt]) => {
+            const d = new Date(dateStr + 'T00:00:00');
             const dayOfWeek = d.getDay();
             const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
             const weekStart = new Date(d);
             weekStart.setDate(diff);
             const weekKey = formatDateLocal(weekStart);
-            weeklyData[weekKey] = (weeklyData[weekKey] || 0) + 1;
-
-            // Calculate week end (Sunday)
+            weeklyData[weekKey] = (weeklyData[weekKey] || 0) + cnt;
             if (!weekRanges[weekKey]) {
                 const weekEnd = new Date(weekStart);
                 weekEnd.setDate(weekStart.getDate() + 6);
-                weekRanges[weekKey] = {
-                    start: weekStart,
-                    end: weekEnd
-                };
+                weekRanges[weekKey] = { start: weekStart, end: weekEnd };
             }
         });
 
         const allSortedWeeks = Object.keys(weeklyData).sort();
-        const sortedWeeks = allSortedWeeks.slice(-30); // Last 30 weeks for chart
+        const sortedWeeks = allSortedWeeks.slice(-30);
 
-        // Store full data for modal
-        window.dailyChartFullData = {
-            allWeeks: allSortedWeeks,
-            weeklyData: weeklyData,
-            weekRanges: weekRanges
-        };
+        window.dailyChartFullData = { allWeeks: allSortedWeeks, weeklyData: weeklyData, weekRanges: weekRanges };
 
         labels = sortedWeeks.map(dateStr => {
             const d = new Date(dateStr + 'T00:00:00');
             const month = d.toLocaleString('default', { month: 'short' });
             const day = d.getDate();
             const year = d.getFullYear();
-            // Show year for January weeks
-            if (d.getMonth() === 0 && day <= 7) {
-                return `${year}\n${month} ${day}`;
-            }
+            if (d.getMonth() === 0 && day <= 7) return `${year}\n${month} ${day}`;
             return `${month} ${day}`;
         });
 
         data = sortedWeeks.map(w => weeklyData[w]);
-
-        // Store week ranges for tooltip access
         dailyChart._weekRanges = sortedWeeks.map(weekKey => weekRanges[weekKey]);
         fullDates = sortedWeeks;
 
     } else {
-        // Group by month (default)
         const monthlyData = {};
-        chartData.forEach(t => {
-            if (!t.date) return;
-            const d = new Date(t.date + 'T00:00:00');
+        Object.entries(dailyData).forEach(([dateStr, cnt]) => {
+            const d = new Date(dateStr + 'T00:00:00');
             const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            monthlyData[monthKey] = (monthlyData[monthKey] || 0) + 1;
+            monthlyData[monthKey] = (monthlyData[monthKey] || 0) + cnt;
         });
 
         const allSortedMonths = Object.keys(monthlyData).sort();
-        const sortedMonths = allSortedMonths.slice(-12); // Last 12 months for chart
+        const sortedMonths = allSortedMonths.slice(-12);
 
-        // Store full data for modal
-        window.dailyChartFullData = {
-            allMonths: allSortedMonths,
-            monthlyData: monthlyData
-        };
+        window.dailyChartFullData = { allMonths: allSortedMonths, monthlyData: monthlyData };
 
         labels = sortedMonths.map(monthKey => {
             const [year, month] = monthKey.split('-');
@@ -1838,12 +1711,9 @@ function updateDailyChartOnly() {
 
         data = sortedMonths.map(m => monthlyData[m]);
         fullDates = sortedMonths;
-
-        // Clear week ranges for non-week views
         dailyChart._weekRanges = null;
     }
 
-    // Store full dates for tooltip
     dailyChart._fullDates = fullDates;
 
     dailyChart.data.labels = labels;
@@ -1855,12 +1725,10 @@ function updateDailyChartOnly() {
         borderWidth: 1
     }];
 
-    // Update tooltip to show full date
     dailyChart.options.plugins.tooltip = {
         callbacks: {
             title: (items) => {
                 const idx = items[0].dataIndex;
-
                 if (uiUnits.dailyView === 'week' && dailyChart._weekRanges) {
                     const range = dailyChart._weekRanges[idx];
                     if (range) {
@@ -1887,33 +1755,22 @@ function updateDailyChartOnly() {
     dailyChart.options.scales.y.suggestedMax = Math.ceil(dailyMax * 1.30) || 10;
     dailyChart.update();
 }
+// Leftover logic removed
 
 // ============================================
 // TABLE
 // ============================================
 
-function renderTable() {
-    // Sort data
-    const sorted = [...filteredData].sort((a, b) => {
-        let aVal = a[sortColumn] || '';
-        let bVal = b[sortColumn] || '';
-        if (sortDirection === 'asc') {
-            return aVal > bVal ? 1 : -1;
-        }
-        return aVal < bVal ? 1 : -1;
-    });
+// Render table from server-paginated data
+function renderTableFromData(tableData) {
+    const rows = tableData.rows || [];
+    const total = tableData.total || 0;
 
-    // Paginate
-    const start = (currentPage - 1) * pageSize;
-    const end = start + pageSize;
-    const pageData = sorted.slice(start, end);
-
-    // Render
-    if (pageData.length === 0) {
+    if (rows.length === 0) {
         elements.tableBody.innerHTML = '<tr><td colspan="7" class="loading">No tickets found</td></tr>';
     } else {
-        elements.tableBody.innerHTML = pageData.map((ticket, index) => {
-            const displaySla = ticket.ticket_sla_status || ticket.sla || '-';
+        elements.tableBody.innerHTML = rows.map((ticket, index) => {
+            const displaySla = ticket.sla_status || '-';
             const slaClass = displaySla !== '-' ? displaySla.toLowerCase() : 'na';
 
             const ticketIdDisplay = ticket.intercom_id
@@ -1921,7 +1778,7 @@ function renderTable() {
                 : (ticket.ticket_id || '-');
 
             return `
-            <tr class="clickable-row" data-index="${start + index}">
+            <tr class="clickable-row" data-index="${index}">
                 <td>${ticket.date || '-'}</td>
                 <td>${ticketIdDisplay}</td>
                 <td>${ticket.ticket_handler_agent_name || '-'}</td>
@@ -1936,22 +1793,36 @@ function renderTable() {
         // Add click handlers to rows
         elements.tableBody.querySelectorAll('.clickable-row').forEach((row, idx) => {
             row.addEventListener('click', () => {
-                showTicketDetails(pageData[idx]);
+                showTicketDetails(rows[idx]);
             });
         });
     }
 
     // Update pagination
-    const totalPages = Math.ceil(sorted.length / pageSize);
-    elements.pageInfo.textContent = `Page ${currentPage} of ${totalPages} (${sorted.length} tickets)`;
+    const totalPages = Math.ceil(total / pageSize) || 1;
+    elements.pageInfo.textContent = `Page ${currentPage} of ${totalPages} (${total.toLocaleString()} tickets)`;
     elements.prevPage.disabled = currentPage === 1;
     elements.nextPage.disabled = currentPage >= totalPages;
 }
 
-function changePage(delta) {
-    currentPage += delta;
-    renderTable();
+// Keep old renderTable as a wrapper for compat
+function renderTable() {
+    // With RPC, table is rendered via renderTableFromData after loadTablePage
+    // This is called from updateDashboard for compat but table is already rendered
 }
+
+async function changePage(delta) {
+    currentPage += delta;
+    elements.tableBody.innerHTML = '<tr><td colspan="7" class="loading">⏳ Loading...</td></tr>';
+    try {
+        const tableData = await loadTablePage();
+        tableTotal = tableData.total || 0;
+        renderTableFromData(tableData);
+    } catch (e) {
+        elements.tableBody.innerHTML = `<tr><td colspan="7" class="loading">❌ Error: ${e.message}</td></tr>`;
+    }
+}
+// Old render logic removed
 
 function truncate(str, len) {
     if (!str) return '-';
@@ -2392,12 +2263,17 @@ const HANDLERS_PER_PAGE = 15;
 
 function showAllHandlersModal() {
     const modal = document.getElementById('handlersModal');
+
+    // Build from aggregates
+    const hs = aggregates ? (aggregates.handlers || {}) : {};
+    window.allHandlersData = Object.entries(hs).sort((a, b) => b[1] - a[1]);
+
     modal.classList.add('active');
 
     handlersCurrentPage = 1;
     renderHandlersPage();
 
-    // Event listeners for pagination
+    // Event listeners
     document.getElementById('handlersPrev').onclick = () => {
         if (handlersCurrentPage > 1) {
             handlersCurrentPage--;
@@ -2414,7 +2290,6 @@ function showAllHandlersModal() {
         }
     };
 
-    // Add event listeners
     document.addEventListener('keydown', handleHandlersEscapeKey);
     modal.addEventListener('click', handleHandlersOutsideClick);
 }
@@ -2482,14 +2357,10 @@ const categoriesPageSize = 15;
 function showAllCategoriesModal() {
     const modal = document.getElementById('categoriesModal');
 
-    // Build category data from filteredData
-    const categoryCounts = {};
-    filteredData.forEach(t => {
-        const cat = t.issue_category || 'Uncategorized';
-        categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-    });
+    // Build category data from aggregates
+    const cs = aggregates ? (aggregates.categories || {}) : {};
+    allCategoriesData = Object.entries(cs).sort((a, b) => b[1] - a[1]);
 
-    allCategoriesData = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]);
     categoriesPageNum = 1;
     renderCategoriesPage();
 
@@ -2570,13 +2441,10 @@ const countriesPageSize = 20;
 function showAllCountriesModal() {
     const modal = document.getElementById('countriesModal');
 
-    // Build sorted country data from filteredData
-    const countryMap = {};
-    filteredData.forEach(t => {
-        const c = t.country || '';
-        if (c) countryMap[c] = (countryMap[c] || 0) + 1;
-    });
-    allCountriesData = Object.entries(countryMap).sort((a, b) => b[1] - a[1]);
+    // Build country data from aggregates
+    const cs = aggregates ? (aggregates.countries || {}) : {};
+    allCountriesData = Object.entries(cs).sort((a, b) => b[1] - a[1]);
+
     countriesPageNum = 1;
     renderCountriesPage();
 
@@ -2639,85 +2507,102 @@ function handleCountriesOutsideClick(e) {
 // AGENT DETAIL MODAL
 // ============================================
 
-function showAgentDetails(agentName) {
+async function showAgentDetails(agentName) {
     const modal = document.getElementById('agentDetailModal');
     const title = document.getElementById('agentDetailTitle');
     const body = document.getElementById('agentDetailBody');
 
     title.textContent = `Tickets for ${agentName}`;
-
-    const tickets = window.agentTicketsData ? window.agentTicketsData[agentName] || [] : [];
-
-    // Separate tickets by SLA status
-    const metTickets = tickets.filter(t => t.agent_sla_status === 'Met');
-    const missedTickets = tickets.filter(t => t.agent_sla_status === 'Missed');
-
-    // Group tickets by date
-    function groupByDate(ticketList) {
-        const grouped = {};
-        ticketList.forEach(t => {
-            const date = t.date || 'Unknown';
-            if (!grouped[date]) grouped[date] = [];
-            grouped[date].push(t);
-        });
-        // Sort by date descending
-        const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-        return sortedDates.map(date => ({ date, tickets: grouped[date] }));
-    }
-
-    function renderTicketLink(t) {
-        const ticketId = t.ticket_id || '-';
-        if (t.intercom_id) {
-            return `<a href="https://app.intercom.com/a/inbox/aphmhtyj/inbox/conversation/${t.intercom_id}?view=List" target="_blank" class="ticket-id-link">${ticketId}</a>`;
-        }
-        return `<span class="ticket-id-plain">${ticketId}</span>`;
-    }
-
-    function renderSection(sectionTitle, sectionTickets, slaClass) {
-        if (sectionTickets.length === 0) {
-            return `<div class="agent-detail-section">
-                <h4 class="section-title ${slaClass}">${sectionTitle} (0)</h4>
-                <div class="section-scroll-area">
-                    <p class="no-tickets">No tickets</p>
-                </div>
-            </div>`;
-        }
-
-        const grouped = groupByDate(sectionTickets);
-        let html = `<div class="agent-detail-section">
-            <h4 class="section-title ${slaClass}">${sectionTitle} (${sectionTickets.length})</h4>
-            <div class="section-scroll-area">`;
-
-        grouped.forEach(({ date, tickets: dateTickets }) => {
-            html += `<div class="date-group">
-                <div class="date-header">${date}</div>
-                <div class="ticket-chips">
-                    ${dateTickets.map(t => renderTicketLink(t)).join('')}
-                </div>
-            </div>`;
-        });
-
-        html += '</div></div>';
-        return html;
-    }
-
-    body.innerHTML = `
-        <div class="agent-detail-columns">
-            ${renderSection('✓ SLA Met', metTickets, 'sla-met-section')}
-            ${renderSection('✗ SLA Missed', missedTickets, 'sla-missed-section')}
-        </div>
-    `;
-
-    // Reset scroll position to top
-    body.scrollTop = 0;
-    const scrollAreas = body.querySelectorAll('.section-scroll-area');
-    scrollAreas.forEach(area => area.scrollTop = 0);
+    body.innerHTML = '<div class="agent-detail-section"><p class="loading">Loading tickets from database...</p></div>';
 
     modal.classList.add('active');
 
-    // Add event listeners
     document.addEventListener('keydown', handleAgentDetailEscapeKey);
     modal.addEventListener('click', handleAgentDetailOutsideClick);
+
+    try {
+        // Query Supabase for this agent's tickets matching current filters
+        const params = buildRpcParams();
+        let query = supabaseClient.from('ticket_logs')
+            .select('date, ticket_id, intercom_id, agent_sla_status')
+            .eq('ticket_handler_agent_name', agentName)
+            .order('date', { ascending: false })
+            .limit(1000); // Max 1000 per agent to keep browser happy
+
+        if (params.p_from) query = query.gte('date', params.p_from);
+        if (params.p_to) query = query.lte('date', params.p_to);
+        if (params.p_teams) query = query.in('current_team', params.p_teams);
+        if (params.p_categories) query = query.in('issue_category', params.p_categories);
+        if (params.p_sla) query = query.or(`ticket_sla_status.in.(${params.p_sla.join(',')}),sla.in.(${params.p_sla.join(',')})`);
+
+        const { data: tickets, error } = await query;
+        if (error) throw error;
+
+        // Separate tickets by SLA status
+        const metTickets = tickets.filter(t => t.agent_sla_status === 'Met');
+        const missedTickets = tickets.filter(t => t.agent_sla_status === 'Missed');
+
+        // Group tickets by date
+        function groupByDate(ticketList) {
+            const grouped = {};
+            ticketList.forEach(t => {
+                const date = t.date || 'Unknown';
+                if (!grouped[date]) grouped[date] = [];
+                grouped[date].push(t);
+            });
+            // Sort by date descending
+            const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+            return sortedDates.map(date => ({ date, tickets: grouped[date] }));
+        }
+
+        function renderTicketLink(t) {
+            const ticketId = t.ticket_id || '-';
+            if (t.intercom_id) {
+                return `<a href="https://app.intercom.com/a/inbox/aphmhtyj/inbox/conversation/${t.intercom_id}?view=List" target="_blank" class="ticket-id-link">${ticketId}</a>`;
+            }
+            return `<span class="ticket-id-plain">${ticketId}</span>`;
+        }
+
+        function renderSection(sectionTitle, sectionTickets, slaClass) {
+            if (sectionTickets.length === 0) {
+                return `<div class="agent-detail-section">
+                    <h4 class="section-title ${slaClass}">${sectionTitle} (0)</h4>
+                    <div class="section-scroll-area">
+                        <p class="no-tickets">No tickets</p>
+                    </div>
+                </div>`;
+            }
+
+            const grouped = groupByDate(sectionTickets);
+            let html = `<div class="agent-detail-section">
+                <h4 class="section-title ${slaClass}">${sectionTitle} (${sectionTickets.length})</h4>
+                <div class="section-scroll-area">`;
+
+            grouped.forEach(({ date, tickets: dateTickets }) => {
+                html += `<div class="date-group">
+                    <div class="date-header">${date}</div>
+                    <div class="ticket-chips">
+                        ${dateTickets.map(t => renderTicketLink(t)).join('')}
+                    </div>
+                </div>`;
+            });
+
+            html += '</div></div>';
+            return html;
+        }
+
+        body.innerHTML = `
+            <div class="agent-detail-columns">
+                ${renderSection('✓ SLA Met', metTickets, 'sla-met-section')}
+                ${renderSection('✗ SLA Missed', missedTickets, 'sla-missed-section')}
+            </div>
+            ${tickets.length === 1000 ? '<p style="text-align:center; font-size:12px; color:#6b7280; margin-top:10px;">Showing top 1000 recent tickets for this agent</p>' : ''}
+        `;
+
+    } catch (err) {
+        console.error('Error loading agent tickets', err);
+        body.innerHTML = `<div class="agent-detail-section"><p class="loading" style="color:#ef4444">Failed to load tickets: ${err.message}</p></div>`;
+    }
 }
 
 function closeAgentDetailModal() {
