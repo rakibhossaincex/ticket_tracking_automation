@@ -3,8 +3,13 @@
 -- Run this entire file in Supabase SQL Editor (Dashboard → SQL Editor → New Query)
 -- ============================================================
 
--- 1. INDEX: Speed up date-range queries
+-- 1. INDEXES: Speed up queries on commonly filtered columns
 CREATE INDEX IF NOT EXISTS idx_ticket_logs_date ON ticket_logs(date);
+CREATE INDEX IF NOT EXISTS idx_ticket_logs_team ON ticket_logs(current_team);
+CREATE INDEX IF NOT EXISTS idx_ticket_logs_handler ON ticket_logs(ticket_handler_agent_name);
+CREATE INDEX IF NOT EXISTS idx_ticket_logs_sla ON ticket_logs(ticket_sla_status);
+CREATE INDEX IF NOT EXISTS idx_ticket_logs_category ON ticket_logs(issue_category);
+CREATE INDEX IF NOT EXISTS idx_ticket_logs_duration ON ticket_logs(ticket_sla_duration_seconds);
 
 -- ============================================================
 -- 2. MAIN AGGREGATION FUNCTION
