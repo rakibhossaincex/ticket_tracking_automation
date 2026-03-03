@@ -229,6 +229,97 @@ const OUTSIDE_BAR_LABELS = {
     formatter: (v) => v
 };
 
+// Country name → ISO 3166-1 alpha-2 code mapping (ALL 197 countries + territories + DB variants)
+const COUNTRY_CODES = {
+    'afghanistan': 'AF', 'albania': 'AL', 'algeria': 'DZ', 'andorra': 'AD', 'angola': 'AO',
+    'antigua and barbuda': 'AG', 'argentina': 'AR', 'armenia': 'AM', 'australia': 'AU', 'austria': 'AT',
+    'azerbaijan': 'AZ', 'bahamas': 'BS', 'bahrain': 'BH', 'bangladesh': 'BD', 'barbados': 'BB',
+    'belarus': 'BY', 'belgium': 'BE', 'belize': 'BZ', 'benin': 'BJ', 'bermuda': 'BM', 'bhutan': 'BT',
+    'bolivia': 'BO', 'bosnia and herzegovina': 'BA', 'botswana': 'BW', 'brazil': 'BR', 'brunei': 'BN',
+    'bulgaria': 'BG', 'burkina faso': 'BF', 'burundi': 'BI', 'cabo verde': 'CV', 'cape verde': 'CV',
+    'cambodia': 'KH', 'cameroon': 'CM', 'canada': 'CA', 'central african republic': 'CF', 'chad': 'TD',
+    'chile': 'CL', 'china': 'CN', 'colombia': 'CO', 'comoros': 'KM', 'congo': 'CG',
+    'congo, the democratic republic of the': 'CD', 'democratic republic of the congo': 'CD',
+    'costa rica': 'CR', 'croatia': 'HR', 'cuba': 'CU', 'cyprus': 'CY',
+    'czech republic': 'CZ', 'czechia': 'CZ',
+    "c\u00f4te d'ivoire": 'CI', "cote d'ivoire": 'CI', 'ivory coast': 'CI',
+    'denmark': 'DK', 'djibouti': 'DJ', 'dominica': 'DM', 'dominican republic': 'DO',
+    'east timor': 'TL', 'timor-leste': 'TL', 'ecuador': 'EC', 'egypt': 'EG', 'el salvador': 'SV',
+    'equatorial guinea': 'GQ', 'eritrea': 'ER', 'estonia': 'EE', 'eswatini': 'SZ', 'swaziland': 'SZ',
+    'ethiopia': 'ET', 'fiji': 'FJ', 'finland': 'FI', 'france': 'FR', 'french guiana': 'GF',
+    'gabon': 'GA', 'gambia': 'GM', 'georgia': 'GE', 'germany': 'DE', 'ghana': 'GH', 'greece': 'GR',
+    'grenada': 'GD', 'guadeloupe': 'GP', 'guatemala': 'GT', 'guinea': 'GN', 'guinea-bissau': 'GW',
+    'guyana': 'GY', 'haiti': 'HT', 'honduras': 'HN', 'hong kong': 'HK', 'hungary': 'HU',
+    'iceland': 'IS', 'india': 'IN', 'indonesia': 'ID',
+    'iran': 'IR', 'iran, islamic republic of': 'IR', 'islamic republic of iran': 'IR',
+    'iraq': 'IQ', 'ireland': 'IE', 'israel': 'IL', 'italy': 'IT',
+    'jamaica': 'JM', 'japan': 'JP', 'jordan': 'JO', 'kazakhstan': 'KZ', 'kenya': 'KE',
+    'kiribati': 'KI', 'kosovo': 'XK', 'xk': 'XK',
+    'korea': 'KR', 'korea, republic of': 'KR', 'south korea': 'KR',
+    'north korea': 'KP', "korea, democratic people's republic of": 'KP',
+    'kuwait': 'KW', 'kyrgyzstan': 'KG',
+    'laos': 'LA', "lao people's democratic republic": 'LA',
+    'latvia': 'LV', 'lebanon': 'LB', 'lesotho': 'LS', 'liberia': 'LR', 'libya': 'LY',
+    'liechtenstein': 'LI', 'lithuania': 'LT', 'luxembourg': 'LU',
+    'macao': 'MO', 'macau': 'MO', 'madagascar': 'MG', 'malawi': 'MW', 'malaysia': 'MY',
+    'maldives': 'MV', 'mali': 'ML', 'malta': 'MT', 'marshall islands': 'MH', 'martinique': 'MQ',
+    'mauritania': 'MR', 'mauritius': 'MU', 'mexico': 'MX', 'micronesia': 'FM',
+    'moldova': 'MD', 'moldova, republic of': 'MD', 'republic of moldova': 'MD',
+    'monaco': 'MC', 'mongolia': 'MN', 'montenegro': 'ME', 'morocco': 'MA', 'mozambique': 'MZ',
+    'myanmar': 'MM', 'namibia': 'NA', 'nauru': 'NR', 'nepal': 'NP', 'netherlands': 'NL',
+    'new caledonia': 'NC', 'new zealand': 'NZ', 'nicaragua': 'NI', 'niger': 'NE', 'nigeria': 'NG',
+    'north macedonia': 'MK', 'norway': 'NO', 'oman': 'OM',
+    'pakistan': 'PK', 'palau': 'PW', 'palestine': 'PS', 'palestine, state of': 'PS',
+    'state of palestine': 'PS',
+    'panama': 'PA', 'papua new guinea': 'PG', 'paraguay': 'PY', 'peru': 'PE', 'philippines': 'PH',
+    'poland': 'PL', 'portugal': 'PT', 'puerto rico': 'PR', 'qatar': 'QA',
+    'reunion': 'RE', 'romania': 'RO',
+    'russia': 'RU', 'russian federation': 'RU',
+    'rwanda': 'RW', 'saint kitts and nevis': 'KN', 'saint lucia': 'LC',
+    'saint vincent and the grenadines': 'VC', 'samoa': 'WS', 'san marino': 'SM',
+    'sao tome and principe': 'ST', 'saudi arabia': 'SA', 'senegal': 'SN', 'serbia': 'RS',
+    'seychelles': 'SC', 'sierra leone': 'SL', 'singapore': 'SG', 'slovakia': 'SK', 'slovenia': 'SI',
+    'solomon islands': 'SB', 'somalia': 'SO', 'south africa': 'ZA', 'south sudan': 'SS', 'spain': 'ES',
+    'sri lanka': 'LK', 'sudan': 'SD', 'suriname': 'SR', 'sweden': 'SE', 'switzerland': 'CH',
+    'syria': 'SY', 'syrian arab republic': 'SY',
+    'taiwan': 'TW', 'tajikistan': 'TJ',
+    'tanzania': 'TZ', 'tanzania, united republic of': 'TZ', 'united republic of tanzania': 'TZ',
+    'thailand': 'TH', 'togo': 'TG', 'tonga': 'TO', 'trinidad and tobago': 'TT', 'tunisia': 'TN',
+    'turkey': 'TR', 'turkmenistan': 'TM', 'tuvalu': 'TV', 'uganda': 'UG', 'ukraine': 'UA',
+    'united arab emirates': 'AE', 'uae': 'AE',
+    'united kingdom': 'GB', 'uk': 'GB', 'great britain': 'GB',
+    'united states': 'US', 'usa': 'US', 'united states of america': 'US',
+    'uruguay': 'UY', 'uzbekistan': 'UZ', 'vanuatu': 'VU',
+    'vatican city': 'VA', 'holy see': 'VA',
+    'venezuela': 'VE', 'venezuela, bolivarian republic of': 'VE',
+    'bolivarian republic of venezuela': 'VE',
+    'vietnam': 'VN', 'viet nam': 'VN',
+    'yemen': 'YE', 'zambia': 'ZM', 'zimbabwe': 'ZW'
+};
+function countryFlag(name, size = 20) {
+    const code = COUNTRY_CODES[(name || '').toLowerCase().trim()];
+    if (!code) return '';
+    return `<img src="https://flagcdn.com/w${size}/${code.toLowerCase()}.png" alt="${code}" style="vertical-align: middle; margin: 0 4px;" width="${size}">`;
+}
+
+// Flag image cache and loader (used by Chart.js plugin)
+const flagImageCache = {};
+function getFlagImage(countryName) {
+    const code = COUNTRY_CODES[(countryName || '').toLowerCase().trim()];
+    if (!code) return null;
+    const key = code.toLowerCase();
+    if (flagImageCache[key]) return flagImageCache[key];
+    const img = new Image();
+    img.src = `https://flagcdn.com/w40/${key}.png`;
+    flagImageCache[key] = img;
+    return img;
+}
+function countryFlagText(name) {
+    const code = COUNTRY_CODES[(name || '').toLowerCase().trim()];
+    if (!code) return '';
+    return String.fromCodePoint(...[...code].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
 const TOP_RIGHT_LEGEND = {
     position: 'top',
     align: 'end',
@@ -1349,9 +1440,36 @@ function initCharts() {
     initContinentMap();
 
     // 10. Country Chart (Horizontal Bar – Top 10)
+    // Custom plugin to draw flags on Y-axis (right of label text)
+    const flagPlugin = {
+        id: 'countryFlags',
+        afterDraw(chart) {
+            const yAxis = chart.scales.y;
+            if (!yAxis || !chart.data.labels?.length) return;
+            const ctx = chart.ctx;
+            const labels = chart.data.labels;
+            const flagW = 20, flagH = 14;
+            ctx.save();
+            ctx.font = `${yAxis.options.ticks.font?.size || 11}px sans-serif`;
+            ctx.textBaseline = 'middle';
+            labels.forEach((label, i) => {
+                const y = yAxis.getPixelForTick(i);
+                const img = getFlagImage(label);
+                if (img && img.complete && img.naturalWidth > 0) {
+                    // Right-aligned labels: text ends at yAxis.right - padding
+                    // We place flag just before that (between text end and bar start)
+                    const x = yAxis.right - flagW - 4;
+                    ctx.drawImage(img, x, y - flagH / 2, flagW, flagH);
+                }
+            });
+            ctx.restore();
+        }
+    };
+
     countryChart = new Chart(document.getElementById('countryChart'), {
         type: 'bar',
         data: { labels: [], datasets: [] },
+        plugins: [flagPlugin],
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -1367,7 +1485,10 @@ function initCharts() {
             },
             scales: {
                 x: { beginAtZero: true, ticks: { color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                y: { ticks: { color: '#a0a0b0', font: { size: 11 } }, grid: { display: false } }
+                y: {
+                    ticks: { color: '#a0a0b0', font: { size: 11 }, padding: 28 },
+                    grid: { display: false }
+                }
             }
         }
     });
@@ -1483,6 +1604,10 @@ function updateCharts() {
         const cMax = Math.max(...(countryChart.data.datasets[0]?.data || [0]), 0);
         countryChart.options.scales.x.suggestedMax = Math.ceil((cMax * 1.14) / 10) * 10 || 10;
         countryChart.update();
+
+        // Preload flag images then redraw chart so flags render
+        sortedCountries.forEach(([name]) => getFlagImage(name));
+        setTimeout(() => countryChart.update(), 500);
     }
 
     // Agent Table update
@@ -2281,54 +2406,15 @@ function showAllHandlersModal() {
 
     // Build from aggregates
     const hs = aggregates ? (aggregates.handlers || {}) : {};
-    window.allHandlersData = Object.entries(hs).sort((a, b) => b[1] - a[1]);
+    const allHandlers = Object.entries(hs).sort((a, b) => b[1] - a[1]);
+    const maxCount = allHandlers.length > 0 ? allHandlers[0][1] : 1;
 
     modal.classList.add('active');
 
-    handlersCurrentPage = 1;
-    renderHandlersPage();
-
-    // Event listeners
-    document.getElementById('handlersPrev').onclick = () => {
-        if (handlersCurrentPage > 1) {
-            handlersCurrentPage--;
-            renderHandlersPage();
-        }
-    };
-
-    document.getElementById('handlersNext').onclick = () => {
-        const allHandlers = window.allHandlersData || [];
-        const totalPages = Math.ceil(allHandlers.length / HANDLERS_PER_PAGE);
-        if (handlersCurrentPage < totalPages) {
-            handlersCurrentPage++;
-            renderHandlersPage();
-        }
-    };
-
-    document.addEventListener('keydown', handleHandlersEscapeKey);
-    modal.addEventListener('click', handleHandlersOutsideClick);
-}
-
-function renderHandlersPage() {
-    const allHandlers = window.allHandlersData || [];
-    const totalPages = Math.ceil(allHandlers.length / HANDLERS_PER_PAGE);
-    const maxCount = allHandlers.length > 0 ? allHandlers[0][1] : 1;
-
-    const start = (handlersCurrentPage - 1) * HANDLERS_PER_PAGE;
-    const end = start + HANDLERS_PER_PAGE;
-    const pageHandlers = allHandlers.slice(start, end);
-
-    // Update page info
-    document.getElementById('handlersPageInfo').textContent = `Page ${handlersCurrentPage} of ${totalPages}`;
-
-    // Update button states
-    document.getElementById('handlersPrev').disabled = handlersCurrentPage === 1;
-    document.getElementById('handlersNext').disabled = handlersCurrentPage === totalPages;
-
-    // Render handlers
+    // Render all handlers at once (scrollable)
     const container = document.getElementById('handlersTableContainer');
-    container.innerHTML = pageHandlers.map((handler, idx) => {
-        const rank = start + idx + 1;
+    container.innerHTML = allHandlers.map((handler, idx) => {
+        const rank = idx + 1;
         const name = handler[0];
         const count = handler[1];
         const percentage = (count / maxCount) * 100;
@@ -2344,6 +2430,9 @@ function renderHandlersPage() {
             </div>
         `;
     }).join('');
+
+    document.addEventListener('keydown', handleHandlersEscapeKey);
+    modal.addEventListener('click', handleHandlersOutsideClick);
 }
 
 function closeHandlersModal() {
@@ -2374,45 +2463,15 @@ function showAllCategoriesModal() {
 
     // Build category data from aggregates
     const cs = aggregates ? (aggregates.categories || {}) : {};
-    allCategoriesData = Object.entries(cs).sort((a, b) => b[1] - a[1]);
-
-    categoriesPageNum = 1;
-    renderCategoriesPage();
+    const allCategories = Object.entries(cs).sort((a, b) => b[1] - a[1]);
+    const maxCount = allCategories.length > 0 ? allCategories[0][1] : 1;
 
     modal.classList.add('active');
 
-    // Event listeners for pagination
-    document.getElementById('categoriesPrev').onclick = () => {
-        if (categoriesPageNum > 1) {
-            categoriesPageNum--;
-            renderCategoriesPage();
-        }
-    };
-    document.getElementById('categoriesNext').onclick = () => {
-        const totalPages = Math.ceil(allCategoriesData.length / categoriesPageSize);
-        if (categoriesPageNum < totalPages) {
-            categoriesPageNum++;
-            renderCategoriesPage();
-        }
-    };
-
-    document.addEventListener('keydown', handleCategoriesEscapeKey);
-    modal.addEventListener('click', handleCategoriesOutsideClick);
-}
-
-function renderCategoriesPage() {
-    const totalPages = Math.max(1, Math.ceil(allCategoriesData.length / categoriesPageSize));
-    document.getElementById('categoriesPageInfo').textContent = `Page ${categoriesPageNum} of ${totalPages}`;
-
-    const start = (categoriesPageNum - 1) * categoriesPageSize;
-    const end = start + categoriesPageSize;
-    const pageCategories = allCategoriesData.slice(start, end);
-
-    const maxCount = allCategoriesData.length > 0 ? allCategoriesData[0][1] : 1;
-
+    // Render all categories at once (scrollable)
     const container = document.getElementById('categoriesTableContainer');
-    container.innerHTML = pageCategories.map((cat, idx) => {
-        const rank = start + idx + 1;
+    container.innerHTML = allCategories.map((cat, idx) => {
+        const rank = idx + 1;
         const name = cat[0];
         const count = cat[1];
         const percentage = (count / maxCount) * 100;
@@ -2428,6 +2487,9 @@ function renderCategoriesPage() {
             </div>
         `;
     }).join('');
+
+    document.addEventListener('keydown', handleCategoriesEscapeKey);
+    modal.addEventListener('click', handleCategoriesOutsideClick);
 }
 
 function closeCategoriesModal() {
@@ -2458,49 +2520,29 @@ function showAllCountriesModal() {
 
     // Build country data from aggregates
     const cs = aggregates ? (aggregates.countries || {}) : {};
-    allCountriesData = Object.entries(cs).sort((a, b) => b[1] - a[1]);
-
-    countriesPageNum = 1;
-    renderCountriesPage();
+    const allCountries = Object.entries(cs).sort((a, b) => b[1] - a[1]);
+    const maxCount = allCountries.length > 0 ? allCountries[0][1] : 1;
 
     modal.classList.add('active');
 
-    document.getElementById('countriesPrev').onclick = () => {
-        if (countriesPageNum > 1) { countriesPageNum--; renderCountriesPage(); }
-    };
-    document.getElementById('countriesNext').onclick = () => {
-        const totalPages = Math.ceil(allCountriesData.length / countriesPageSize);
-        if (countriesPageNum < totalPages) { countriesPageNum++; renderCountriesPage(); }
-    };
-
-    document.addEventListener('keydown', handleCountriesEscapeKey);
-    modal.addEventListener('click', handleCountriesOutsideClick);
-}
-
-function renderCountriesPage() {
-    const totalPages = Math.max(1, Math.ceil(allCountriesData.length / countriesPageSize));
-    document.getElementById('countriesPageInfo').textContent = `Page ${countriesPageNum} of ${totalPages}`;
-    document.getElementById('countriesPrev').disabled = countriesPageNum === 1;
-    document.getElementById('countriesNext').disabled = countriesPageNum >= totalPages;
-
-    const start = (countriesPageNum - 1) * countriesPageSize;
-    const pageItems = allCountriesData.slice(start, start + countriesPageSize);
-    const maxCount = allCountriesData.length > 0 ? allCountriesData[0][1] : 1;
-
+    // Render all countries at once (scrollable)
     const container = document.getElementById('countriesTableContainer');
-    container.innerHTML = pageItems.map(([name, count], idx) => {
-        const rank = start + idx + 1;
+    container.innerHTML = allCountries.map(([name, count], idx) => {
+        const rank = idx + 1;
         const pct = ((count / maxCount) * 100).toFixed(0);
         return `
             <div class="handler-row">
                 <span class="handler-rank">#${rank}</span>
-                <span class="handler-name" title="${name}">${name}</span>
+                <span class="handler-name" title="${name}">${countryFlag(name)} ${name}</span>
                 <div class="handler-bar-container">
                     <div class="handler-bar" style="width:${pct}%"></div>
                 </div>
                 <span class="handler-count">${count}</span>
             </div>`;
     }).join('');
+
+    document.addEventListener('keydown', handleCountriesEscapeKey);
+    modal.addEventListener('click', handleCountriesOutsideClick);
 }
 
 function closeCountriesModal() {

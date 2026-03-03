@@ -1,0 +1,444 @@
+{
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "bf-001",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                -2200,
+                -1280
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.intercom.io/teams",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "bf-002",
+            "name": "List Teams",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -1960,
+                -1280
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "NP8zyf9bSfqaxMj0",
+                    "name": "Bearer Auth account 3"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Build team id->name map and store in static data.\n// Returns the first-page fetch parameters {offset, limit}.\nfunction ensureObj(x) {\n  if (!x) return {};\n  if (typeof x === 'string') { try { return JSON.parse(x); } catch { return {}; } }\n  return x;\n}\nconst resp  = ensureObj($json);\nconst teams = resp.teams || resp.data || [];\nconst idToName = {};\nconst nameToId = {};\nfor (const t of teams) {\n  if (!t || !t.id) continue;\n  const name = (t.name || '').trim();\n  idToName[t.id] = name;\n  if (name) nameToId[name.toLowerCase()] = t.id;\n}\nconst sd = $getWorkflowStaticData('global');\nsd.teamIdToName = idToName;\nsd.teamNameToId = nameToId;\nsd.bfOffset     = 0;  // reset on every fresh run\nconsole.log(`[Backfill] Team map: ${Object.keys(idToName).length} teams. Starting offset=0.`);\n// Output the first page parameters — used by Fetch Tickets node via $json.offset / $json.limit\nreturn [{ json: { offset: 0, limit: 150 } }];"
+            },
+            "id": "bf-003",
+            "name": "Build Team Map",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1720,
+                -1280
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://umkzssfympyhifdjptwf.supabase.co/rest/v1/ticket_logs",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "apikey",
+                            "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVta3pzc2Z5bXB5aGlmZGpwdHdmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Nzk1MzkzMywiZXhwIjoyMDgzNTI5OTMzfQ.uLp84D6LmkkEL5rGgIp-EOuUX_vhNc82n-oHm6qWW-0"
+                        },
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVta3pzc2Z5bXB5aGlmZGpwdHdmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Nzk1MzkzMywiZXhwIjoyMDgzNTI5OTMzfQ.uLp84D6LmkkEL5rGgIp-EOuUX_vhNc82n-oHm6qWW-0"
+                        }
+                    ]
+                },
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "select",
+                            "value": "ticket_id,intercom_id,unique_id,date"
+                        },
+                        {
+                            "name": "or",
+                            "value": "(ticket_handler_agent_name.is.null,ticket_handler_agent_name.eq.)"
+                        },
+                        {
+                            "name": "intercom_id",
+                            "value": "not.is.null"
+                        },
+                        {
+                            "name": "order",
+                            "value": "id.asc"
+                        },
+                        {
+                            "name": "limit",
+                            "value": "={{ $json.limit }}"
+                        },
+                        {
+                            "name": "offset",
+                            "value": "={{ $json.offset }}"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {}
+                }
+            },
+            "id": "bf-004",
+            "name": "Fetch Tickets from Supabase",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -1480,
+                -1280
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// PAGINATE — runs ONCE for the whole page (default mode, NOT runOnceForEachItem).\n// KEY: we ALWAYS return offset=0 because each cycle's PATCHes remove those rows from\n// the Supabase filter result. Incrementing the offset would SKIP rows as the result\n// set shrinks — that was the bug causing only 1350/3000 rows to be processed.\n// We stop when a page returns fewer than PAGE_SIZE rows.\nconst items     = $input.all();\nconst PAGE_SIZE = 150;\nconst hasMore   = items.length >= PAGE_SIZE;\nconsole.log(`[Backfill] Page: ${items.length} items | hasMore:${hasMore} | offset always 0`);\nreturn [{ json: { has_next: hasMore, offset: 0, limit: PAGE_SIZE } }];"
+            },
+            "id": "bf-005",
+            "name": "Paginate: Prepare Next",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1240,
+                -1232
+            ]
+        },
+        {
+            "parameters": {
+                "url": "=https://api.intercom.io/tickets/{{$json[\"intercom_id\"]}}",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "httpBearerAuth",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "Intercom-Version",
+                            "value": "2.11"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {},
+                    "batching": {
+                        "batch": {
+                            "batchSize": 10,
+                            "batchInterval": 500
+                        }
+                    }
+                }
+            },
+            "id": "bf-006",
+            "name": "Get Ticket Details",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -1240,
+                -1472
+            ],
+            "credentials": {
+                "httpBearerAuth": {
+                    "id": "Wb6mK3xsTXEujIUR",
+                    "name": "Bearer Auth account 5"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForEachItem",
+                "jsCode": "// TRANSFORM – identical logic to the main All Team Ticket Log workflow\nconst TRACKED_TEAMS=['Pro Solutions Task Force','CEx Reversal','Ticket Dependencies','Payments and Treasury','GB Email Communication','Tech Team','Business Operations','Platform Operations','Case Resolution'];\nfunction getTeamCode(t){const tn=(t||'').toLowerCase();if(tn.includes('pro solutions')||tn.includes('cex reversal')||tn.includes('ticket dependencies'))return 'CEx';if(tn.includes('business operations'))return 'BO';if(tn.includes('payments')||tn.includes('treasury')||tn.includes('gb email'))return 'PT';if(tn.includes('platform operations'))return 'PO';if(tn.includes('tech team'))return 'TT';if(tn.includes('case resolution'))return 'CR';return '';}\nconst TWH={'CEx':{start:0,end:24},'PT':{start:9,end:18},'TT':{start:9,end:18},'PO':{start:8.5,end:17.5},'CR':{start:8.5,end:17.5},'BO':{start:8.5,end:17.5}};\nconst SLA={'CEx':{weekdayOffice:1,weekdayAfter:1,weekendOffice:1,weekendAfter:1},'BO':{weekdayOffice:12,weekdayAfter:24,weekendOffice:12,weekendAfter:24},'PT':{weekdayOffice:12,weekdayAfter:12,weekendOffice:24,weekendAfter:24},'PO':{weekdayOffice:3,weekdayAfter:18,weekendOffice:24,weekendAfter:24},'TT':{weekdayOffice:8,weekdayAfter:20,weekendOffice:72,weekendAfter:72},'CR':{weekdayOffice:3,weekdayAfter:17,weekendOffice:54,weekendAfter:54}};\nfunction sH(h){if(!h)return '';return String(h).replace(/<br\\s*\\/?>/gi,'\\n').replace(/<\\/p>/gi,'\\n').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();}\nfunction toISO(n){n=typeof n==='number'?n:parseInt(n,10);if(!n||isNaN(n))return '';return new Date((n+21600)*1000).toISOString().slice(0,10);}\nfunction norm(s){return(s||'').toString().trim().toLowerCase();}\nfunction gA(p){const a=p?.author||p?.created_by||p?.creator||{};return{id:a?.id?String(a.id):'',name:a?.name||'',email:a?.email||'',type:a?.type||''};}\nfunction fmt(s){if(!s||s<0)return '';const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);let r='';if(d>0)r+=d+'d ';if(h>0)r+=h+'h ';if(m>0||r==='')r+=m+'m';return r.trim();}\nfunction inWH(ts,tc){if(!ts||!tc)return true;const hrs=TWH[tc];if(!hrs)return true;const dt=new Date((ts+21600)*1000);const h=dt.getUTCHours()+dt.getUTCMinutes()/60;return h>=hrs.start&&h<hrs.end;}\nfunction isWE(ts){if(!ts)return false;return[0,6].includes(new Date((ts+21600)*1000).getUTCDay());}\nfunction gSla(tc,we,off){const l=SLA[tc];if(!l)return 24;return we?(off?l.weekendOffice:l.weekendAfter):(off?l.weekdayOffice:l.weekdayAfter);}\nconst ticket=$json||{};\nif(ticket.type==='error.list'||ticket.errors){console.log('[Backfill] Intercom error – skipping');return{json:{_skip:true}};}\nconst iId=String(ticket.id||'');\nconst tId=String(ticket.ticket_id||ticket.id||'');\nconst tState=norm(ticket.ticket_state||ticket.state||'');\nconst tLabel=ticket.ticket_state_internal_label||ticket.ticket_state_external_label||ticket.ticket_state||'';\nconst isRes=(tState==='resolved'||tState==='closed');\nlet pt='';const ta=ticket.ticket_attributes||{};\nfor(const k of Object.keys(ta)){if(k.toLowerCase().includes('product')&&k.toLowerCase().includes('type')){pt=String(ta[k]||'');break;}}\nif(!pt&&ta['Product Type'])pt=String(ta['Product Type']);\nconst ptl=pt.toLowerCase();if(ptl==='cfds'||ptl==='cfd')pt='CFD';else if(ptl==='futures')pt='Futures';else if(ptl.includes('stellar')||ptl.includes('instant'))pt='CFD';\nlet ic='';if(ticket.ticket_type?.name)ic=ticket.ticket_type.name;else if(ticket.custom_attributes?.ticket_type)ic=ticket.custom_attributes.ticket_type;\nif(!ic)ic=sH(ticket?.ticket_attributes?._default_title_||ticket?.title||ticket?.subject||'');\nconst cArr=ticket?.contacts?.contacts||(Array.isArray(ticket?.contacts)?ticket.contacts:[]);\nconst con=cArr[0]||{};\nlet parts=ticket.ticket_parts||[];if(!Array.isArray(parts)){const tp=ticket.ticket_parts||{};parts=Array.isArray(tp.ticket_parts)?tp.ticket_parts:(Array.isArray(tp.data)?tp.data:[]);}\nparts.sort((a,b)=>(a?.created_at||0)-(b?.created_at||0));\nconst tCA=ticket.created_at||0;\nlet rAt=0,rFCE='';\nif(isRes&&ticket.state_updated_at>0)rAt=ticket.state_updated_at;\nif(!rAt){for(const p of parts){const cs=norm(p?.ticket_state||p?.ticket_state_internal_label||'');const pca=p.created_at||0;if((cs.includes('resolved')||cs.includes('closed'))&&pca>rAt){rAt=pca;const au=gA(p);if(au.type==='admin'&&au.name)rFCE=au.name;}}}\nif(!rAt&&isRes)rAt=tCA;\nif(rAt>1e11)rAt=Math.floor(rAt/1000);\nconst rSec=(rAt&&tCA&&rAt>tCA)?(rAt-tCA):0;\nconst rTime=fmt(rSec);const rDate=toISO(rAt);\nconst fAP=parts.find(p=>gA(p).type==='admin');\nconst crN=fAP?gA(fAP).name:(con?.name||'');\nconst crE=fAP?gA(fAP).email:(con?.email||'');\nconst tv=new Set();let aAT=[],lN='',lA='';\nconst sd=$getWorkflowStaticData('global');\nconst tin=sd.teamIdToName||{};\nconst cTN=tin[String(ticket.team_assignee_id||'')]||'';\nif(cTN)tv.add(cTN);\nfor(const p of parts){\n  const au=gA(p);const body=sH(p?.body||p?.comment||p?.note||'');\n  const ptype=norm(p?.part_type||p?.event_type||p?.type||'');const pca=p.created_at||0;\n  if(norm(au.type)==='admin'&&body)lN=body;\n  const at=p.assigned_to||p.assignee||{};\n  if(at.type==='team'){const tn=at.name||tin[String(at.id||'')]||'';if(tn)tv.add(tn);}\n  if(ptype.includes('assign')||ptype==='team_assignment'){if(pca>0)aAT.push(pca);if(at.type==='admin'&&at.name)lA=at.name;}\n}\nconst hN=rFCE||lA||'';\nlet aHT='',aHTSec=0;\nif(rAt){const va=aAT.filter(t=>t>0&&t<=rAt).sort((a,b)=>b-a);aHTSec=va.length>0?(rAt-va[0]):(rAt-tCA);aHT=fmt(aHTSec);}\nconst utc=tv.size;const isPSTF=(utc===2&&tv.has('Pro Solutions Task Force')&&tv.has('CEx Reversal'));\nconst slaA=utc<=1||isPSTF;\nlet slaHrs=24;const tc=getTeamCode(cTN);\nif(tc==='CEx')slaHrs=1;else if(tc)slaHrs=gSla(tc,isWE(tCA),inWH(tCA,tc));\nconst slaSec=slaHrs*3600;\nlet tSla='N/A';if(slaA&&rSec>0)tSla=rSec<=slaSec?'Met':'Missed';\nlet aSla='N/A';if(aHTSec>0)aSla=aHTSec<=slaSec?'Met':'Missed';\nconst rdoh=(rAt&&tc)?inWH(rAt,tc):null;\nconst teamCols={};\nfor(const tn of TRACKED_TEAMS)teamCols[tn]=tv.has(tn)?'Yes':'';\nconst uId=`${rDate||toISO(tCA)}|${tId}`;\nconsole.log(`[Backfill] ticket=${tId} team=${cTN} handler=${hN}`);\nreturn{json:{_skip:false,unique_id:uId,ticket_id:tId,intercom_id:iId,ticket_creator_agent_name:crN,ticket_handler_agent_name:hN,resolution_time:rTime,agent_handle_time:aHT,ticket_status:tLabel,sla:tSla,sla_limit_hours:slaHrs,product_type:pt,resolved_during_office_hours:rdoh,current_team:cTN,issue_category:ic,description_last_ticket_note:lN,ticket_creator_email:crE,pro_solutions_task_force:teamCols['Pro Solutions Task Force'],cex_reversal:teamCols['CEx Reversal'],ticket_dependencies:teamCols['Ticket Dependencies'],payments_and_treasury:teamCols['Payments and Treasury'],gb_email_communication:teamCols['GB Email Communication'],tech_team:teamCols['Tech Team'],business_operations:teamCols['Business Operations'],platform_operations:teamCols['Platform Operations'],case_resolution:teamCols['Case Resolution'],ticket_sla_status:tSla,ticket_sla_limit_hours:slaHrs,ticket_sla_duration_seconds:rSec,agent_sla_status:aSla,agent_handle_time_seconds:aHTSec}};"
+            },
+            "id": "bf-007",
+            "name": "Transform Ticket Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1000,
+                -1472
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json[\"_skip\"] }}",
+                            "value2": false
+                        }
+                    ]
+                }
+            },
+            "id": "bf-008",
+            "name": "Filter Passed?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                -760,
+                -1472
+            ]
+        },
+        {
+            "parameters": {
+                "method": "PATCH",
+                "url": "=https://umkzssfympyhifdjptwf.supabase.co/rest/v1/ticket_logs?ticket_id=eq.{{$json[\"ticket_id\"]}}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        },
+                        {
+                            "name": "apikey",
+                            "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVta3pzc2Z5bXB5aGlmZGpwdHdmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Nzk1MzkzMywiZXhwIjoyMDgzNTI5OTMzfQ.uLp84D6LmkkEL5rGgIp-EOuUX_vhNc82n-oHm6qWW-0"
+                        },
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVta3pzc2Z5bXB5aGlmZGpwdHdmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Nzk1MzkzMywiZXhwIjoyMDgzNTI5OTMzfQ.uLp84D6LmkkEL5rGgIp-EOuUX_vhNc82n-oHm6qWW-0"
+                        },
+                        {
+                            "name": "Prefer",
+                            "value": "return=minimal"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ ticket_creator_agent_name: $json.ticket_creator_agent_name, ticket_handler_agent_name: $json.ticket_handler_agent_name, resolution_time: $json.resolution_time, agent_handle_time: $json.agent_handle_time, ticket_status: $json.ticket_status, sla: $json.sla, sla_limit_hours: $json.sla_limit_hours, product_type: $json.product_type, resolved_during_office_hours: $json.resolved_during_office_hours, current_team: $json.current_team, issue_category: $json.issue_category, description_last_ticket_note: $json.description_last_ticket_note, ticket_creator_email: $json.ticket_creator_email, pro_solutions_task_force: $json.pro_solutions_task_force, cex_reversal: $json.cex_reversal, ticket_dependencies: $json.ticket_dependencies, payments_and_treasury: $json.payments_and_treasury, gb_email_communication: $json.gb_email_communication, tech_team: $json.tech_team, business_operations: $json.business_operations, platform_operations: $json.platform_operations, case_resolution: $json.case_resolution, ticket_sla_status: $json.ticket_sla_status, ticket_sla_limit_hours: $json.ticket_sla_limit_hours, ticket_sla_duration_seconds: $json.ticket_sla_duration_seconds, agent_sla_status: $json.agent_sla_status, agent_handle_time_seconds: $json.agent_handle_time_seconds }) }}",
+                "options": {
+                    "batching": {
+                        "batch": {
+                            "batchSize": 5,
+                            "batchInterval": 500
+                        }
+                    }
+                }
+            },
+            "id": "bf-009",
+            "name": "Upsert to Supabase",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.3,
+            "position": [
+                -520,
+                -1488
+            ]
+        },
+        {
+            "parameters": {},
+            "id": "bf-010",
+            "name": "Merge",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3.2,
+            "position": [
+                -256,
+                -1232
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "has-next-check",
+                            "leftValue": "={{ $json.has_next }}",
+                            "rightValue": "",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "bf-011",
+            "name": "If (Has Next Page?)",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                16,
+                -1232
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "List Teams",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "List Teams": {
+            "main": [
+                [
+                    {
+                        "node": "Build Team Map",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Team Map": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Tickets from Supabase",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Tickets from Supabase": {
+            "main": [
+                [
+                    {
+                        "node": "Paginate: Prepare Next",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Get Ticket Details",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Paginate: Prepare Next": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Get Ticket Details": {
+            "main": [
+                [
+                    {
+                        "node": "Transform Ticket Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Transform Ticket Data": {
+            "main": [
+                [
+                    {
+                        "node": "Filter Passed?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Filter Passed?": {
+            "main": [
+                [
+                    {
+                        "node": "Upsert to Supabase",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Upsert to Supabase": {
+            "main": [
+                [
+                    {
+                        "node": "Merge",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Merge": {
+            "main": [
+                [
+                    {
+                        "node": "If (Has Next Page?)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "If (Has Next Page?)": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Tickets from Supabase",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "meta": {
+        "instanceId": "b076ee236eeb0f1e0d5cf68bfef91d2e6b976d3c37b7dea8eeb4131cf958e05f"
+    }
+}
