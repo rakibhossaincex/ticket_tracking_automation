@@ -27,12 +27,16 @@ CREATE OR REPLACE FUNCTION dashboard_aggregates(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET statement_timeout = '30s'
 AS $$
 DECLARE
   result JSONB;
 BEGIN
   WITH filtered AS (
-    SELECT *
+    SELECT date, ticket_id, ticket_handler_agent_name, current_team,
+           issue_category, ticket_sla_status, sla, ticket_sla_duration_seconds,
+           agent_sla_status, agent_handle_time_seconds, resolved_during_office_hours,
+           product_type, continent, country, description_last_ticket_note
     FROM ticket_logs
     WHERE (p_from IS NULL OR date >= p_from::date)
       AND (p_to   IS NULL OR date <= p_to::date)
@@ -189,6 +193,7 @@ CREATE OR REPLACE FUNCTION dashboard_table_page(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET statement_timeout = '30s'
 AS $$
 DECLARE
   result JSONB;
