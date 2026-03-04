@@ -951,6 +951,9 @@ function initCustomDatePicker() {
         onChange: function (selectedDates, dateStr) {
             if (selectedDates.length === 2) {
                 dateRangeInput.value = dateStr;
+            } else if (selectedDates.length === 1) {
+                const d = formatDateLocal(selectedDates[0]);
+                dateRangeInput.value = `${d} to ${d}`;
             }
         }
     });
@@ -977,9 +980,9 @@ function initCustomDatePicker() {
         e.stopPropagation();
         const selectedDates = rangePicker.selectedDates;
 
-        if (selectedDates.length === 2) {
+        if (selectedDates.length >= 1) {
             const fromDate = formatDateLocal(selectedDates[0]);
-            const toDate = formatDateLocal(selectedDates[1]);
+            const toDate = selectedDates.length === 2 ? formatDateLocal(selectedDates[1]) : fromDate;
 
             // Store dates as YYYY-MM-DD strings directly (avoid timezone conversion issues)
             filters.from = fromDate;
