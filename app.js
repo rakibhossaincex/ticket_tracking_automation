@@ -941,6 +941,7 @@ function initCustomDatePicker() {
     const dateRangeInput = document.getElementById('customDateRange');
 
     let lastSelectedDate = null;
+    let settingDate = false;
 
     // Initialize Flatpickr in range mode with inline calendar
     let rangePicker = flatpickr(dateRangeInput, {
@@ -951,16 +952,22 @@ function initCustomDatePicker() {
         appendTo: document.querySelector('.picker-main'),
         static: true,
         onChange: function (selectedDates, dateStr) {
+            if (settingDate) return; // Prevent recursive calls
             if (selectedDates.length === 2) {
                 dateRangeInput.value = dateStr;
                 lastSelectedDate = null;
             } else if (selectedDates.length === 1) {
                 const d = formatDateLocal(selectedDates[0]);
+                const clickedDate = new Date(selectedDates[0]);
                 if (lastSelectedDate && lastSelectedDate === d) {
                     // Same date clicked twice — complete range as single day
-                    rangePicker.setDate([selectedDates[0], selectedDates[0]], true);
-                    dateRangeInput.value = `${d} to ${d}`;
                     lastSelectedDate = null;
+                    settingDate = true;
+                    setTimeout(() => {
+                        rangePicker.setDate([clickedDate, clickedDate], false);
+                        dateRangeInput.value = `${d} to ${d}`;
+                        settingDate = false;
+                    }, 0);
                 } else {
                     lastSelectedDate = d;
                     dateRangeInput.value = `${d} to ${d}`;
