@@ -940,9 +940,6 @@ function setQuickDateRange(range) {
 function initCustomDatePicker() {
     const dateRangeInput = document.getElementById('customDateRange');
 
-    let lastSelectedDate = null;
-    let settingDate = false;
-
     // Initialize Flatpickr in range mode with inline calendar
     let rangePicker = flatpickr(dateRangeInput, {
         mode: 'range',
@@ -952,27 +949,21 @@ function initCustomDatePicker() {
         appendTo: document.querySelector('.picker-main'),
         static: true,
         onChange: function (selectedDates, dateStr) {
-            if (settingDate) return; // Prevent recursive calls
             if (selectedDates.length === 2) {
                 dateRangeInput.value = dateStr;
-                lastSelectedDate = null;
             } else if (selectedDates.length === 1) {
-                const d = formatDateLocal(selectedDates[0]);
-                const clickedDate = new Date(selectedDates[0]);
-                if (lastSelectedDate && lastSelectedDate === d) {
-                    // Same date clicked twice — complete range as single day
-                    lastSelectedDate = null;
-                    settingDate = true;
-                    setTimeout(() => {
-                        rangePicker.setDate([clickedDate, clickedDate], false);
-                        dateRangeInput.value = `${d} to ${d}`;
-                        settingDate = false;
-                    }, 0);
-                } else {
-                    lastSelectedDate = d;
-                    dateRangeInput.value = `${d} to ${d}`;
-                }
+                dateRangeInput.value = formatDateLocal(selectedDates[0]);
             }
+        }
+    });
+
+    // Handle double-click on same date to complete range as single day
+    rangePicker.calendarContainer.addEventListener('dblclick', (e) => {
+        const dayEl = e.target.closest('.flatpickr-day');
+        if (dayEl && !dayEl.classList.contains('flatpickr-disabled') && dayEl.dateObj) {
+            const d = formatDateLocal(dayEl.dateObj);
+            rangePicker.setDate([dayEl.dateObj, dayEl.dateObj], false);
+            dateRangeInput.value = `${d} to ${d}`;
         }
     });
 
@@ -1002,11 +993,18 @@ function initCustomDatePicker() {
             const fromDate = formatDateLocal(selectedDates[0]);
             const toDate = selectedDates.length === 2 ? formatDateLocal(selectedDates[1]) : fromDate;
 
+            // For single-day selection, complete the range in Flatpickr
+            if (selectedDates.length === 1) {
+                rangePicker.setDate([selectedDates[0], selectedDates[0]], false);
+            }
+
             // Store dates as YYYY-MM-DD strings directly (avoid timezone conversion issues)
             filters.from = fromDate;
             filters.to = toDate;
             console.log('[DateFilter] committed', filters.from, filters.to);
 
+            // Update both the calendar input and the filter bar display
+            dateRangeInput.value = `${fromDate} to ${toDate}`;
             elements.dateRange.value = `${fromDate} to ${toDate}`;
             elements.dateRangeText.textContent = `${fromDate} - ${toDate}`;
 
