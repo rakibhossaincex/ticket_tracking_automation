@@ -963,7 +963,7 @@ function initCustomDatePicker() {
                     lastSelectedDate = null;
                 } else {
                     lastSelectedDate = d;
-                    dateRangeInput.value = d;
+                    dateRangeInput.value = `${d} to ${d}`;
                 }
             }
         }
