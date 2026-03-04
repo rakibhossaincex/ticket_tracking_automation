@@ -1000,8 +1000,8 @@ function initCustomDatePicker() {
             filters.to = toDate;
             console.log('[DateFilter] committed', filters.from, filters.to);
 
-            elements.dateRange.value = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
-            elements.dateRangeText.textContent = fromDate === toDate ? fromDate : `${fromDate} - ${toDate}`;
+            elements.dateRange.value = `${fromDate} to ${toDate}`;
+            elements.dateRangeText.textContent = `${fromDate} - ${toDate}`;
 
             // Mark "Custom" as active
             document.querySelectorAll('.picker-opt').forEach(opt => {
