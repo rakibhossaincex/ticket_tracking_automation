@@ -940,6 +940,8 @@ function setQuickDateRange(range) {
 function initCustomDatePicker() {
     const dateRangeInput = document.getElementById('customDateRange');
 
+    let lastSelectedDate = null;
+
     // Initialize Flatpickr in range mode with inline calendar
     let rangePicker = flatpickr(dateRangeInput, {
         mode: 'range',
@@ -951,9 +953,18 @@ function initCustomDatePicker() {
         onChange: function (selectedDates, dateStr) {
             if (selectedDates.length === 2) {
                 dateRangeInput.value = dateStr;
+                lastSelectedDate = null;
             } else if (selectedDates.length === 1) {
                 const d = formatDateLocal(selectedDates[0]);
-                dateRangeInput.value = `${d} to ${d}`;
+                if (lastSelectedDate && lastSelectedDate === d) {
+                    // Same date clicked twice — complete range as single day
+                    rangePicker.setDate([selectedDates[0], selectedDates[0]], true);
+                    dateRangeInput.value = `${d} to ${d}`;
+                    lastSelectedDate = null;
+                } else {
+                    lastSelectedDate = d;
+                    dateRangeInput.value = d;
+                }
             }
         }
     });
