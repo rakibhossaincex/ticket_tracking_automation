@@ -419,7 +419,8 @@ const elements = {
     prevPage: document.getElementById('prevPage'),
     nextPage: document.getElementById('nextPage'),
     pageInfo: document.getElementById('pageInfo'),
-    exportCsv: document.getElementById('exportCsv'),
+    exportBtn: document.getElementById('exportBtn'),
+    exportMenu: document.getElementById('exportMenu'),
     slaNaNote: document.getElementById('slaNaNote'),
     agentSlaBody: document.getElementById('agentSlaBody'),
     slaUnitToggle: document.getElementById('slaUnitToggle')
@@ -459,7 +460,20 @@ async function init() {
     // Top pagination bar
     document.querySelector('.topPrevPage')?.addEventListener('click', () => changePage(-1));
     document.querySelector('.topNextPage')?.addEventListener('click', () => changePage(1));
-    elements.exportCsv.addEventListener('click', exportToCsv);
+    // Export dropdown
+    elements.exportBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const menu = elements.exportMenu;
+        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    });
+    document.querySelectorAll('.export-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            elements.exportMenu.style.display = 'none';
+            exportData(btn.dataset.format);
+        });
+    });
+    document.addEventListener('click', () => { elements.exportMenu.style.display = 'none'; });
 
     // Team SLA unit toggle
     if (elements.slaUnitToggle) {
@@ -1992,25 +2006,115 @@ function truncate(str, len) {
 // EXPORT
 // ============================================
 
-function exportToCsv() {
-    const headers = ['Date', 'Ticket ID', 'Handler', 'Team', 'Resolution Time', 'SLA', 'Category', 'Description'];
-    const rows = filteredData.map(t => [
-        t.date,
-        t.ticket_id,
-        t.ticket_handler_agent_name,
-        t.current_team,
-        t.resolution_time,
-        t.ticket_sla_status || t.sla,
-        t.issue_category,
-        `"${(t.description_last_ticket_note || "").replace(/"/g, '""')}"`
-    ]);
+async function exportData(format) {
+    const btn = elements.exportBtn;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span>⏳ Exporting...</span>';
+    btn.disabled = true;
 
-    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    try {
+        // Fetch ALL matching rows from server (not just current page)
+        const allRows = [];
+        const batchSize = 5000;
+        let offset = 0;
+        let total = Infinity;
+
+        while (offset < total) {
+            const params = buildRpcParams();
+            params.p_sort_col = sortColumn;
+            params.p_sort_dir = sortDirection;
+            params.p_offset = offset;
+            params.p_limit = batchSize;
+            const { data, error } = await supabaseClient.rpc('dashboard_table_page', params);
+            if (error) throw error;
+            total = data.total || 0;
+            const rows = data.rows || [];
+            allRows.push(...rows);
+            offset += batchSize;
+            if (rows.length < batchSize) break;
+        }
+
+        const headers = ['Date', 'Ticket ID', 'Ticket Link', 'Handler', 'Team', 'Resolution Time (min)', 'SLA', 'Category', 'Description'];
+        const tableRows = allRows.map(t => {
+            const link = t.intercom_id
+                ? `https://app.intercom.com/a/inbox/aphmhtyj/inbox/conversation/${t.intercom_id}?view=List`
+                : '';
+            return [
+                t.date || '',
+                t.ticket_id || '',
+                link,
+                t.ticket_handler_agent_name || '',
+                t.current_team || '',
+                t.resolution_time != null ? t.resolution_time : '',
+                t.sla_status || '',
+                t.issue_category || '',
+                t.description_last_ticket_note || ''
+            ];
+        });
+
+        const filename = `tickets_export_${new Date().toISOString().split('T')[0]}`;
+
+        if (format === 'csv') {
+            const csvRows = tableRows.map(r =>
+                r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+            );
+            const csv = [headers.join(','), ...csvRows].join('\n');
+            downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `${filename}.csv`);
+
+        } else if (format === 'xlsx') {
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...tableRows]);
+            // Auto-size columns
+            ws['!cols'] = headers.map((h, i) => ({
+                wch: Math.min(40, Math.max(h.length, ...tableRows.slice(0, 100).map(r => String(r[i]).length)))
+            }));
+            // Make Ticket Link column clickable using HYPERLINK formula
+            tableRows.forEach((row, i) => {
+                if (row[2]) {
+                    const cellRef = XLSX.utils.encode_cell({ r: i + 1, c: 2 });
+                    ws[cellRef] = { t: 's', f: `HYPERLINK("${row[2]}","Open Ticket")` };
+                }
+            });
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Tickets');
+            XLSX.writeFile(wb, `${filename}.xlsx`);
+
+        } else if (format === 'pdf') {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            doc.setFontSize(14);
+            doc.text('Ticket Details Export', 14, 15);
+            doc.setFontSize(9);
+            doc.text(`Generated: ${new Date().toLocaleString()} | Total: ${allRows.length} tickets`, 14, 21);
+            doc.autoTable({
+                head: [headers],
+                body: tableRows,
+                startY: 25,
+                styles: { fontSize: 7, cellPadding: 1.5 },
+                headStyles: { fillColor: [99, 102, 241], textColor: 255 },
+                columnStyles: { 2: { cellWidth: 45 }, 8: { cellWidth: 50 } },
+                didDrawPage: (data) => {
+                    doc.setFontSize(7);
+                    doc.text(`Page ${doc.internal.getNumberOfPages()}`, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 5);
+                }
+            });
+            doc.save(`${filename}.pdf`);
+        }
+
+        console.log(`[Export] ${format.toUpperCase()} exported: ${allRows.length} rows`);
+    } catch (err) {
+        console.error('[Export] Error:', err);
+        alert('Export failed: ' + err.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tickets_export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
 }

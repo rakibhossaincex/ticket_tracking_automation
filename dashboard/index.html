@@ -329,9 +329,16 @@
                         <option value="50">50 per page</option>
                         <option value="100">100 per page</option>
                     </select>
-                    <button id="exportCsv" class="btn-export">
-                        <span>📥 Export CSV</span>
-                    </button>
+                    <div class="export-dropdown-wrap" style="position:relative;display:inline-block;">
+                        <button id="exportBtn" class="btn-export">
+                            <span>📥 Export ▼</span>
+                        </button>
+                        <div id="exportMenu" class="export-menu" style="display:none;position:absolute;right:0;top:100%;z-index:100;background:#1e1e2e;border:1px solid #333;border-radius:8px;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,0.4);margin-top:4px;">
+                            <button class="export-option" data-format="csv" style="display:block;width:100%;padding:10px 16px;border:none;background:none;color:#e2e8f0;text-align:left;cursor:pointer;font-size:13px;">📄 CSV</button>
+                            <button class="export-option" data-format="xlsx" style="display:block;width:100%;padding:10px 16px;border:none;background:none;color:#e2e8f0;text-align:left;cursor:pointer;font-size:13px;">📊 XLSX</button>
+                            <button class="export-option" data-format="pdf" style="display:block;width:100%;padding:10px 16px;border:none;background:none;color:#e2e8f0;text-align:left;cursor:pointer;font-size:13px;">📕 PDF</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="pagination" id="paginationTop">
@@ -461,6 +468,9 @@
         </div>
     </div>
 
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="app.js?v=1740934097"></script>
 </body>
 
